@@ -431,8 +431,8 @@ bool WINAPI SFileCompactArchive(HANDLE hMpq, const char * szListFile, bool /* bR
     ULONGLONG ByteOffset;
     ULONGLONG ByteCount;
     LPDWORD pFileKeys = NULL;
-    char szTempFile[MAX_PATH] = "";
-    char * szTemp = NULL;
+    TCHAR szTempFile[MAX_PATH] = _T("");
+    TCHAR * szTemp = NULL;
     int nError = ERROR_SUCCESS;
 
     // Test the valid parameters
@@ -469,11 +469,11 @@ bool WINAPI SFileCompactArchive(HANDLE hMpq, const char * szListFile, bool /* bR
     // Get the temporary file name and create it
     if(nError == ERROR_SUCCESS)
     {
-        strcpy(szTempFile, ha->pStream->szFileName);
-        if((szTemp = strrchr(szTempFile, '.')) != NULL)
-            strcpy(szTemp + 1, "mp_");
+        _tcscpy(szTempFile, ha->pStream->szFileName);
+        if((szTemp = _tcsrchr(szTempFile, '.')) != NULL)
+            _tcscpy(szTemp + 1, _T("mp_"));
         else
-            strcat(szTempFile, "_");
+            _tcscat(szTempFile, _T("_"));
 
         pTempStream = FileStream_CreateFile(szTempFile);
         if(pTempStream == NULL)
@@ -525,7 +525,7 @@ bool WINAPI SFileCompactArchive(HANDLE hMpq, const char * szListFile, bool /* bR
     if(nError == ERROR_SUCCESS)
     {
         nError = CopyMpqFiles(ha, pFileKeys, pTempStream);
-        ha->dwFlags |= MPQ_FLAG_CHANGED | MPQ_FLAG_LISTFILE_VALID | MPQ_FLAG_ATTRIBS_VALID;
+        ha->dwFlags |= MPQ_FLAG_CHANGED;
     }
 
     // If succeeded, switch the streams
@@ -589,7 +589,6 @@ bool WINAPI SFileSetMaxFileCount(HANDLE hMpq, DWORD dwMaxFileCount)
     TMPQHash * pOldHashTable = NULL;
     DWORD dwOldHashTableSize = 0;
     DWORD dwOldFileTableSize = 0;
-    DWORD dwFileCount = 0;
     int nError = ERROR_SUCCESS;
 
     // Test the valid parameters
@@ -598,19 +597,9 @@ bool WINAPI SFileSetMaxFileCount(HANDLE hMpq, DWORD dwMaxFileCount)
     if(ha->dwFlags & MPQ_FLAG_READ_ONLY)
         nError = ERROR_ACCESS_DENIED;
 
-    // The new limit must not be lower than file count
-    if(nError == ERROR_SUCCESS)
-    {
-        // Count the existing files
-        for(pFileEntry = ha->pFileTable; pFileEntry < pOldFileTableEnd; pFileEntry++)
-        {
-            if(pFileEntry->dwFlags & MPQ_FILE_EXISTS)
-                dwFileCount++;
-        }
-
-        if(dwFileCount > dwMaxFileCount)
-            nError = ERROR_DISK_FULL;
-    }
+    // The new limit must not be lower than the index of the last file entry in the table
+    if(nError == ERROR_SUCCESS && ha->dwFileTableSize > dwMaxFileCount)
+        nError = ERROR_DISK_FULL;
 
     // ALL file names must be known in order to be able
     // to rebuild hash table size
@@ -708,13 +697,11 @@ bool WINAPI SFileSetMaxFileCount(HANDLE hMpq, DWORD dwMaxFileCount)
     }
 
     // Mark the archive as changed
-    // Keep the (listfile) and (attributes) as-is
+    // Note: We always have to rebuild the (attributes) file due to file table change
     if(nError == ERROR_SUCCESS)
     {
-        ha->dwFileTableSize = dwMaxFileCount;
         ha->dwMaxFileCount = dwMaxFileCount;
-        ha->dwFlags |= MPQ_FLAG_CHANGED | MPQ_FLAG_LISTFILE_VALID | MPQ_FLAG_ATTRIBS_VALID;
-        SaveMPQTables(ha);
+        InvalidateInternalFiles(ha);
     }
     else
     {

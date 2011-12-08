@@ -13,7 +13,6 @@
 /*****************************************************************************/
 
 #define __STORMLIB_SELF__
-#define __INCLUDE_COMPRESSION__
 #include "StormLib.h"
 #include "StormCommon.h"
 

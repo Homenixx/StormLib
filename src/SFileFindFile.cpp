@@ -285,16 +285,13 @@ static int DoMPQSearch(TMPQSearch * hs, SFILE_FIND_DATA * lpFindFileData)
                     szFileName = pFileEntry->szFileName;
                     if(szFileName == NULL)
                     {
-                        // Open the file by index in order to check if the file exists
-                        if(SFileOpenFileEx((HANDLE)hs->ha, (char *)(DWORD_PTR)dwBlockIndex, SFILE_OPEN_BY_INDEX, &hFile))
-                            SFileCloseFile(hFile);
-
-                        // If the name was retrieved, use that one. Otherwise, just use generic pseudo-name
-                        szFileName = pFileEntry->szFileName;
-                        if(szFileName == NULL)
+                        // Open the file by its pseudo-name.
+                        // This also generates the file name with a proper extension
+                        sprintf(szPseudoName, "File%08u.xxx", dwBlockIndex);
+                        if(SFileOpenFileEx((HANDLE)hs->ha, szPseudoName, SFILE_OPEN_FROM_MPQ, &hFile))
                         {
-                            sprintf(szPseudoName, "File%08u.xxx", dwBlockIndex);
-                            szFileName = szPseudoName;
+                            szFileName = (pFileEntry->szFileName != NULL) ? pFileEntry->szFileName : szPseudoName;
+                            SFileCloseFile(hFile);
                         }
                     }
 
@@ -315,7 +312,7 @@ static int DoMPQSearch(TMPQSearch * hs, SFILE_FIND_DATA * lpFindFileData)
 
                         // Fill the file name and plain file name
                         strcpy(lpFindFileData->cFileName, szFileName + nPrefixLength);
-                        lpFindFileData->szPlainName = (char *)GetPlainFileName(lpFindFileData->cFileName);
+                        lpFindFileData->szPlainName = (char *)GetPlainFileNameA(lpFindFileData->cFileName);
                         return ERROR_SUCCESS;
                     }
 

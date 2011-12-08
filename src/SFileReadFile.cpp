@@ -10,7 +10,6 @@
 /*****************************************************************************/
 
 #define __STORMLIB_SELF__
-#define __INCLUDE_COMPRESSION__
 #include "StormLib.h"
 #include "StormCommon.h"
 
@@ -29,40 +28,31 @@ struct TFileHeader2Ext
 //-----------------------------------------------------------------------------
 // Local functions
 
+static void CopyFileName(char * szTarget, const TCHAR * szSource)
+{
+    while(*szSource != 0)
+        *szTarget++ = (char)*szSource++;
+    *szTarget = 0;
+}
+
 static DWORD GetMpqFileCount(TMPQArchive * ha)
 {
     TFileEntry * pFileTableEnd;
     TFileEntry * pFileEntry;
     DWORD dwFileCount = 0;
-    bool bPatchMode = (ha->haPatch != NULL) ? true : false;
 
     // Go through all open MPQs, including patches
     while(ha != NULL)
     {
-        // Go through the entire hash table
+        // Only count files that are not patch files
         pFileTableEnd = ha->pFileTable + ha->dwFileTableSize;
-
-        if(bPatchMode)
+        for(pFileEntry = ha->pFileTable; pFileEntry < pFileTableEnd; pFileEntry++)
         {
-            // If we are in patch mode, only count files that
-            // are not patch files
-            for(pFileEntry = ha->pFileTable; pFileEntry < pFileTableEnd; pFileEntry++)
-            {
-                // If the file is patch file and this is not primary archive, skip it
-                // BUGBUG: This errorneously counts non-patch files that are
-                // in both main MPQ and in patches.
-                if((pFileEntry->dwFlags & (MPQ_FILE_EXISTS | MPQ_FILE_PATCH_FILE)) == MPQ_FILE_EXISTS)
-                    dwFileCount++;
-            }
-        }
-        else
-        {
-            // When we are not in patch mode, count all files, no matter what.
-            for(pFileEntry = ha->pFileTable; pFileEntry < pFileTableEnd; pFileEntry++)
-            {
-                if(pFileEntry->dwFlags & MPQ_FILE_EXISTS)
-                    dwFileCount++;
-            }
+            // If the file is patch file and this is not primary archive, skip it
+            // BUGBUG: This errorneously counts non-patch files that are in both
+            // base MPQ and in patches, and increases the number of files by cca 50%
+            if((pFileEntry->dwFlags & (MPQ_FILE_EXISTS | MPQ_FILE_PATCH_FILE)) == MPQ_FILE_EXISTS)
+                dwFileCount++;
         }
 
         // Move to the next patch archive
@@ -72,6 +62,59 @@ static DWORD GetMpqFileCount(TMPQArchive * ha)
     return dwFileCount;
 }
 
+static bool GetFilePatchChain(TMPQFile * hf, void * pvFileInfo, DWORD cbFileInfo, LPDWORD pcbLengthNeeded)
+{
+    TMPQFile * hfTemp;
+    TCHAR * szPatchChain = (TCHAR *)pvFileInfo;
+    TCHAR * szFileName;
+    size_t cchCharsNeeded = 1;
+    size_t nLength;
+    DWORD cbLengthNeeded;
+
+    // Check if the "hf" is a MPQ file
+    if(hf->pStream != NULL)
+    {
+        // Calculate the length needed
+        cchCharsNeeded += _tcslen(hf->pStream->szFileName) + 1;
+        cbLengthNeeded = (DWORD)(cchCharsNeeded * sizeof(TCHAR));
+        
+        // If we have enough space, copy the file name
+        if(cbFileInfo >= cbLengthNeeded)
+        {
+            nLength = _tcslen(szFileName = hf->pStream->szFileName) + 1;
+            memcpy(szPatchChain, szFileName, nLength * sizeof(TCHAR));
+            szPatchChain += nLength;
+
+            // Terminate the multi-string
+            *szPatchChain = 0;
+        }
+    }
+    else
+    {
+        // Calculate number of characters needed
+        for(hfTemp = hf; hfTemp != NULL; hfTemp = hfTemp->hfPatchFile)
+            cchCharsNeeded += _tcslen(hfTemp->ha->pStream->szFileName) + 1;
+        cbLengthNeeded = (DWORD)(cchCharsNeeded * sizeof(TCHAR));
+
+        // If we have enough space, the copy the patch chain
+        if(cbFileInfo >= cbLengthNeeded)
+        {
+            for(hfTemp = hf; hfTemp != NULL; hfTemp = hfTemp->hfPatchFile)
+            {
+                nLength = _tcslen(szFileName = hfTemp->ha->pStream->szFileName) + 1;
+                memcpy(szPatchChain, szFileName, nLength * sizeof(TCHAR));
+                szPatchChain += nLength;
+            }
+
+            // Terminate the multi-string
+            *szPatchChain = 0;
+        }
+    }
+
+    // Give result length, terminate multi-string and return
+    *pcbLengthNeeded = cbLengthNeeded;
+    return true;
+}
 
 //  hf            - MPQ File handle.
 //  pbBuffer      - Pointer to target buffer to store sectors.
@@ -121,7 +164,7 @@ static int ReadMpqSectors(TMPQFile * hf, LPBYTE pbBuffer, DWORD dwByteOffset, DW
             // Sector CRCs is plain crap feature. It is almost never present,
             // often it's empty, or the end offset of sector CRCs is zero.
             // We only try to load sector CRCs once, and regardless if it fails
-            // or not, we won't try that again for te given file.
+            // or not, we won't try that again for the given file.
             hf->bLoadedSectorCRCs = true;
 
             // Load the sector CRCs.
@@ -129,6 +172,15 @@ static int ReadMpqSectors(TMPQFile * hf, LPBYTE pbBuffer, DWORD dwByteOffset, DW
             if(nError != ERROR_SUCCESS)
                 return nError;
         }
+
+        // TODO: If the raw data MD5s are not loaded yet, load them now
+        // Only do it if the MPQ is of format 4.0
+//      if(ha->pHeader->wFormatVersion >= MPQ_FORMAT_VERSION_4 && ha->pHeader->dwRawChunkSize != 0)
+//      {
+//          nError = AllocateRawMD5s(hf, true);
+//          if(nError != ERROR_SUCCESS)
+//              return nError;
+//      }
 
         // If the file is compressed, also allocate secondary buffer
         pbInSector = pbRawSector = ALLOCMEM(BYTE, dwBytesToRead);
@@ -220,7 +272,10 @@ static int ReadMpqSectors(TMPQFile * hf, LPBYTE pbBuffer, DWORD dwByteOffset, DW
 
             // Is the file compressed by Blizzard's multiple compression ?
             if(pFileEntry->dwFlags & MPQ_FILE_COMPRESS)
+            {
+                hf->PreviousCompression = pbInSector[0];
                 nResult = SCompDecompress((char *)pbOutSector, &cbOutSector, (char *)pbInSector, cbInSector);
+            }
 
             // Did the decompression fail ?
             if(nResult == 0)
@@ -662,7 +717,7 @@ bool WINAPI SFileReadFile(HANDLE hFile, void * pvBuffer, DWORD dwToRead, LPDWORD
 
         // Otherwise read it as sector based MPQ file
         else
-        {
+        {                                                                   
             nError = ReadMpqFile(hf, pvBuffer, dwToRead, &dwBytesRead);
         }
     }
@@ -887,7 +942,7 @@ bool WINAPI SFileGetFileName(HANDLE hFile, char * szFileName)
     pFileEntry = hf->pFileEntry;
     
     // Only do something if the file name is not filled
-    if(nError == ERROR_SUCCESS && pFileEntry->szFileName == NULL)
+    if(nError == ERROR_SUCCESS && pFileEntry != NULL && pFileEntry->szFileName == NULL)
     {
         // Read the first 2 DWORDs bytes from the file
         FirstBytes[0] = FirstBytes[1] = 0;
@@ -909,11 +964,16 @@ bool WINAPI SFileGetFileName(HANDLE hFile, char * szFileName)
 
         // Put the file name to the file table
         AllocateFileName(pFileEntry, szPseudoName);
-    }
+    } 
 
     // Now put the file name to the file structure
-    if(nError == ERROR_SUCCESS && szFileName != NULL && pFileEntry->szFileName != NULL)
-        strcpy(szFileName, pFileEntry->szFileName);
+    if(nError == ERROR_SUCCESS && szFileName != NULL)
+    {
+        if(pFileEntry != NULL && pFileEntry->szFileName != NULL)
+            strcpy(szFileName, pFileEntry->szFileName);
+        else if(hf->pStream != NULL)
+            CopyFileName(szFileName, hf->pStream->szFileName);
+    }
     return (nError == ERROR_SUCCESS);
 }
 
@@ -967,13 +1027,13 @@ bool WINAPI SFileGetFileInfo(
     {
         case SFILE_INFO_ARCHIVE_NAME:
             VERIFY_MPQ_HANDLE(ha);
-            cbLengthNeeded = (DWORD)strlen(ha->pStream->szFileName) + 1;
+            cbLengthNeeded = (DWORD)_tcslen(ha->pStream->szFileName) + 1;
             if(cbFileInfo < cbLengthNeeded)
             {
                 nError = ERROR_INSUFFICIENT_BUFFER;
                 break;
             }
-            strcpy((char *)pvFileInfo, ha->pStream->szFileName);
+            _tcscpy((TCHAR *)pvFileInfo, ha->pStream->szFileName);
             break;
 
         case SFILE_INFO_ARCHIVE_SIZE:       // Size of the archive
@@ -1120,13 +1180,18 @@ bool WINAPI SFileGetFileInfo(
             RESULT_IS_64BIT_VALUE(hf->pFileEntry->FileTime);
             break;
 
+        case SFILE_INFO_PATCH_CHAIN:
+            VERIFY_FILE_HANDLE(hf);
+            GetFilePatchChain(hf, pvFileInfo, cbFileInfo, &cbLengthNeeded);
+            break;
+
         default:
             nError = ERROR_INVALID_PARAMETER;
             break;
     }
 
     // Check the size
-    if(cbLengthNeeded < cbFileInfo)
+    if(cbLengthNeeded > cbFileInfo)
         nError = ERROR_INSUFFICIENT_BUFFER;
 
     // Give the size to the caller

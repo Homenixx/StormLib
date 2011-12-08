@@ -12,11 +12,10 @@
 /*****************************************************************************/
 
 #define __STORMLIB_SELF__
-#define __INCLUDE_CRYPTOGRAPHY__
 #include "StormLib.h"
 #include "StormCommon.h"
 
-char StormLibCopyright[] = "StormLib v " STORMLIB_VERSION_STRING " Copyright Ladislav Zezula 1998-2010";
+char StormLibCopyright[] = "StormLib v " STORMLIB_VERSION_STRING " Copyright Ladislav Zezula 1998-2011";
 
 //-----------------------------------------------------------------------------
 // The buffer for decryption engine.
@@ -108,36 +107,6 @@ DWORD GetHashTableSizeForFileCount(DWORD dwFileCount)
 
     // Don't allow the hash table size go over allowed maximum
     return HASH_TABLE_SIZE_MAX;
-}
-
-//-----------------------------------------------------------------------------
-// Verifies if the file name is a pseudo-name
-
-bool IsPseudoFileName(const char * szFileName, DWORD * pdwFileIndex)
-{
-    const char * szExt = strrchr(szFileName, '.');
-
-    // Must have an extension
-    if(szExt != NULL)
-    {
-        // Length of the name part must be 12 characters
-        if((szExt - szFileName) == 12)
-        {
-            // Must begin with "File"
-            if(!_strnicmp(szFileName, "File", 4))
-            {
-                // Must be 8 digits after "File"
-                if(isdigit(szFileName[4]) && isdigit(szFileName[11]))
-                {
-                    if(pdwFileIndex != NULL)
-                        *pdwFileIndex = strtol(szFileName + 4, (char **)&szExt, 10);
-                    return true;
-                }
-            }
-        }
-    }
-
-    return false;
 }
 
 //-----------------------------------------------------------------------------
@@ -400,16 +369,18 @@ void DecryptMpqTable(void * pvMpqTable, DWORD dwLength, const char * szKey)
     DecryptMpqBlock(pvMpqTable, dwLength, HashString(szKey, MPQ_HASH_FILE_KEY));
 }
 */
-//-----------------------------------------------------------------------------
-// Functions tries to get file decryption key. The trick comes from sector
-// positions which are stored at the begin of each compressed file. We know the
-// file size, that means we know number of sectors that means we know the first
-// DWORD value in sector position. And if we know encrypted and decrypted value,
-// we can find the decryption key !!!
-//
-// hf            - MPQ file handle
-// SectorOffsets - DWORD array of sector positions
-// ch            - Decrypted value of the first sector pos
+
+/**
+ * Functions tries to get file decryption key. The trick comes from sector
+ * positions which are stored at the begin of each compressed file. We know the
+ * file size, that means we know number of sectors that means we know the first
+ * DWORD value in sector position. And if we know encrypted and decrypted value,
+ * we can find the decryption key !!!
+ *
+ * hf            - MPQ file handle
+ * SectorOffsets - DWORD array of sector positions
+ * ch            - Decrypted value of the first sector pos
+ */
 
 DWORD DetectFileKeyBySectorSize(LPDWORD SectorOffsets, DWORD decrypted)
 {
@@ -543,7 +514,7 @@ DWORD DecryptFileKey(
     DWORD dwMpqPos = (DWORD)MpqPos;
 
     // File key is calculated from plain name
-    szFileName = GetPlainFileName(szFileName);
+    szFileName = GetPlainFileNameA(szFileName);
     dwFileKey = HashString(szFileName, MPQ_HASH_FILE_KEY);
 
     // Fix the key, if needed
@@ -697,23 +668,13 @@ DWORD AllocateHashEntry(
 // Finds a free space in the MPQ where to store next data
 // The free space begins beyond the file that is stored at the fuhrtest
 // position in the MPQ.
-void FindFreeMpqSpace(TMPQArchive * ha, ULONGLONG * pMpqPos)
+void FindFreeMpqSpace(TMPQArchive * ha, ULONGLONG * pFreeSpacePos)
 {
     TMPQHeader * pHeader = ha->pHeader;
     TFileEntry * pFileTableEnd = ha->pFileTable + ha->dwFileTableSize;
     TFileEntry * pFileEntry = ha->pFileTable;
-    TFileEntry * pTempEntry1 = NULL;
-    TFileEntry * pTempEntry2 = NULL;
-    ULONGLONG MpqPos = ha->pHeader->dwHeaderSize;
+    ULONGLONG FreeSpacePos = ha->pHeader->dwHeaderSize;
     DWORD dwChunkCount;
-
-    // If the listfile is not saved yet, we invalidate the file entry for it
-    if(!(ha->dwFlags & MPQ_FLAG_LISTFILE_VALID))
-        pTempEntry1 = GetFileEntryExact(ha, LISTFILE_NAME, LANG_NEUTRAL);
-
-    // If attributes file is not saved yet, we invalidate the file entry for it
-    if(!(ha->dwFlags & MPQ_FLAG_ATTRIBS_VALID))
-        pTempEntry2 = GetFileEntryExact(ha, ATTRIBUTES_NAME, LANG_NEUTRAL);
 
     // Parse the entire block table
     for(pFileEntry = ha->pFileTable; pFileEntry < pFileTableEnd; pFileEntry++)
@@ -721,34 +682,27 @@ void FindFreeMpqSpace(TMPQArchive * ha, ULONGLONG * pMpqPos)
         // Only take existing files
         if(pFileEntry->dwFlags & MPQ_FILE_EXISTS)
         {
-            // If (listfile) and/or (attributes) are not saved yet, ignore
-            // their entries. As result, the space for both files in the MPQ
-            // is reused and thus produces less amount of gaps
-            // created when adding new files to the MPQ
-            if(pFileEntry != pTempEntry1 && pFileEntry != pTempEntry2)
+            // If the end of the file is bigger than current MPQ table pos, update it
+            if((pFileEntry->ByteOffset + pFileEntry->dwCmpSize) > FreeSpacePos)
             {
-                // If the end of the file is bigger than current MPQ table pos, update it
-                if((pFileEntry->ByteOffset + pFileEntry->dwCmpSize) > MpqPos)
-                {
-                    // Get the end of the file data
-                    MpqPos = pFileEntry->ByteOffset + pFileEntry->dwCmpSize;
+                // Get the end of the file data
+                FreeSpacePos = pFileEntry->ByteOffset + pFileEntry->dwCmpSize;
 
-                    // Add the MD5 chunks, if present
-                    if(pHeader->dwRawChunkSize != 0)
-                    {
-                        dwChunkCount = pFileEntry->dwCmpSize / pHeader->dwRawChunkSize;
-                        if(pFileEntry->dwCmpSize % pHeader->dwRawChunkSize)
-                            dwChunkCount++;
-                        MpqPos += dwChunkCount * MD5_DIGEST_SIZE;
-                    }
+                // Add the MD5 chunks, if present
+                if(pHeader->dwRawChunkSize != 0)
+                {
+                    dwChunkCount = pFileEntry->dwCmpSize / pHeader->dwRawChunkSize;
+                    if(pFileEntry->dwCmpSize % pHeader->dwRawChunkSize)
+                        dwChunkCount++;
+                    FreeSpacePos += dwChunkCount * MD5_DIGEST_SIZE;
                 }
             }
         }
     }
 
     // Give the free space position to the caller
-    if(pMpqPos != NULL)
-        *pMpqPos = MpqPos;
+    if(pFreeSpacePos != NULL)
+        *pFreeSpacePos = FreeSpacePos;
 }
 
 //-----------------------------------------------------------------------------
@@ -1447,15 +1401,29 @@ void FreeMPQArchive(TMPQArchive *& ha)
     }
 }
 
-const char * GetPlainFileName(const char * szFileName)
+const char * GetPlainFileNameA(const char * szFileName)
 {
-    const char * szPlainName = szFileName + strlen(szFileName);
+    const char * szPlainName = szFileName;
 
-    while(szPlainName > szFileName)
+    while(*szFileName != 0)
     {
-        if(szPlainName[0] == '\\' || szPlainName[0] == '/')
-            return szPlainName + 1;
-        szPlainName--;
+        if(*szFileName == '\\' || *szFileName == '/')
+            szPlainName = szFileName + 1;
+        szFileName++;
+    }
+
+    return szPlainName;
+}
+
+const TCHAR * GetPlainFileNameT(const TCHAR * szFileName)
+{
+    const TCHAR * szPlainName = szFileName;
+
+    while(*szFileName != 0)
+    {
+        if(*szFileName == '\\' || *szFileName == '/')
+            szPlainName = szFileName + 1;
+        szFileName++;
     }
 
     return szPlainName;
@@ -1463,7 +1431,7 @@ const char * GetPlainFileName(const char * szFileName)
 
 bool IsInternalMpqFileName(const char * szFileName)
 {
-    if(szFileName[0] == '(')
+    if(szFileName != NULL && szFileName[0] == '(')
     {
         if(!_stricmp(szFileName, LISTFILE_NAME) ||
            !_stricmp(szFileName, ATTRIBUTES_NAME) ||
@@ -1473,6 +1441,38 @@ bool IsInternalMpqFileName(const char * szFileName)
         }
     }
 
+    return false;
+}
+
+// Verifies if the file name is a pseudo-name
+bool IsPseudoFileName(const char * szFileName, DWORD * pdwFileIndex)
+{
+    DWORD dwFileIndex = 0;
+
+    if(szFileName != NULL)
+    {
+        // Must be "File########.ext"
+        if(!_strnicmp(szFileName, "File", 4))
+        {
+            // Check 8 digits
+            for(int i = 4; i < 4+8; i++)
+            {
+                if(szFileName[i] < '0' || szFileName[i] > '9')
+                    return false;
+                dwFileIndex = (dwFileIndex * 10) + (szFileName[i] - '0');
+            }
+
+            // An extension must follow
+            if(szFileName[12] == '.')
+            {
+                if(pdwFileIndex != NULL)
+                    *pdwFileIndex = dwFileIndex;
+                return true;
+            }
+        }
+    }
+
+    // Not a pseudo-name
     return false;
 }
 

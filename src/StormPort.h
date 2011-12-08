@@ -41,10 +41,11 @@
   #define _CRT_NON_CONFORMING_SWPRINTFS
   #endif
 
-  #include <assert.h>      
-  #include <ctype.h>      
-  #include <stdio.h>      
-  #include <windows.h>      
+  #include <tchar.h>
+  #include <assert.h>
+  #include <ctype.h>
+  #include <stdio.h>
+  #include <windows.h>
   #define PLATFORM_LITTLE_ENDIAN
 
   #ifdef WIN64
@@ -140,9 +141,18 @@
   #define FILE_CURRENT  SEEK_CUR
   #define FILE_END      SEEK_END
 
-  #define _stricmp strcasecmp
+  #define _T(x)     x
+  #define _tcslen   strlen
+  #define _tcscpy   strcpy
+  #define _tcscat   strcat
+  #define _tcsrchr  strrchr
+  #define _tprintf  printf
+  #define _stprintf sprintf
+  #define _tremove  remove
+
+  #define _stricmp  strcasecmp
   #define _strnicmp strncasecmp
-  
+
   void  SetLastError(int err);
   int   GetLastError();
 

@@ -15,49 +15,51 @@
 #define __STORMCOMMON_H__
 
 //-----------------------------------------------------------------------------
-// Make sure that we include the compression library headers,
-// when a source needs the functions
+// Compression support
 
-#ifdef __INCLUDE_COMPRESSION__
+// Include functions from Pkware Data Compression Library
+#include "pklib/pklib.h"
 
-  #include "pklib/pklib.h"          // Include functions from Pkware Data Compression Library
+// Include functions from Huffmann compression
+#include "huffman/huff.h"
 
-  #include "huffman/huff.h"         // Include functions from Huffmann compression
+// Include functions from IMA ADPCM compression
+#include "adpcm/adpcm.h"
 
-  #include "adpcm/adpcm.h"          // Include functions from IMA ADPCM compression
+// Include functions from SPARSE compression
+#include "sparse/sparse.h"
 
-  #include "sparse/sparse.h"        // Include functions from SPARSE compression
+// Include functions from LZMA compression
+#include "lzma/C/LzmaEnc.h"
+#include "lzma/C/LzmaDec.h"
 
-  #include "lzma/C/LzmaEnc.h"       // Include functions from LZMA compression
-  #include "lzma/C/LzmaDec.h"
+// Include functions from zlib
+#ifndef __SYS_ZLIB
+  #include "zlib/zlib.h"
+#else
+  #include <zlib.h>
+#endif
 
-  #ifndef __SYS_ZLIB
-    #include "zlib/zlib.h"          // Include functions from zlib
-  #else
-    #include <zlib.h>               // If zlib is available on system, use this instead
-  #endif
-
-  #ifndef __SYS_BZLIB
-    #include "bzip2/bzlib.h"        // Include functions from bzlib
-  #else
-    #include <bzlib.h>              // If bzlib is available on system, use this instead
-  #endif
-
+// Include functions from bzlib
+#ifndef __SYS_BZLIB
+  #include "bzip2/bzlib.h"
+#else
+  #include <bzlib.h>
 #endif
 
 //-----------------------------------------------------------------------------
-// Make sure that we include the cryptography headers,
-// when a source needs the functions
+// Cryptography support
 
-#ifdef __INCLUDE_CRYPTOGRAPHY__
+// Headers from LibTomCrypt
 #include "libtomcrypt/src/headers/tomcrypt.h"
+
+// For HashStringJenkins
 #include "jenkins/lookup.h"
-#endif
 
 //-----------------------------------------------------------------------------
 // StormLib private defines
 
-#define ID_MPQ_FILE              0x46494c45 // Used internally for checking TMPQFile ('FILE')
+#define ID_MPQ_FILE            0x46494c45     // Used internally for checking TMPQFile ('FILE')
 
 #define MPQ_WEAK_SIGNATURE_SIZE        64
 #define MPQ_STRONG_SIGNATURE_SIZE     256 
@@ -73,14 +75,11 @@
 //-----------------------------------------------------------------------------
 // StormLib internal global variables
 
-extern DWORD dwGlobalFlags;                 // Global StormLib flags
-extern LCID lcFileLocale;                   // Preferred file locale
+extern DWORD dwGlobalFlags;                     // Global StormLib flags
+extern LCID lcFileLocale;                       // Preferred file locale
 
 //-----------------------------------------------------------------------------
 // Encryption and decryption functions
-
-#define MPQ_KEY_HASH_TABLE  0xC3AF3770      // Obtained by HashString("(hash table)", MPQ_HASH_FILE_KEY)
-#define MPQ_KEY_BLOCK_TABLE 0xEC83B3A3      // Obtained by HashString("(block table)", MPQ_HASH_FILE_KEY)
 
 #define MPQ_HASH_TABLE_INDEX    0x000
 #define MPQ_HASH_NAME_A         0x100
@@ -119,7 +118,7 @@ TMPQHash * GetNextHashEntry(TMPQArchive * ha, TMPQHash * pFirstHash, TMPQHash * 
 DWORD AllocateHashEntry(TMPQArchive * ha, TFileEntry * pFileEntry);
 DWORD AllocateHetEntry(TMPQArchive * ha, TFileEntry * pFileEntry);
 
-void FindFreeMpqSpace(TMPQArchive * ha, ULONGLONG * pMpqPos);
+void FindFreeMpqSpace(TMPQArchive * ha, ULONGLONG * pFreeSpacePos);
 
 // Functions that load the HET abd BET tables
 int  CreateHashTable(TMPQArchive * ha, DWORD dwHashTableSize);
@@ -145,7 +144,12 @@ void AllocateFileName(TFileEntry * pFileEntry, const char * szFileName);
 // Allocates new file entry in the MPQ tables. Reuses existing, if possible
 TFileEntry * FindFreeFileEntry(TMPQArchive * ha);
 TFileEntry * AllocateFileEntry(TMPQArchive * ha, const char * szFileName, LCID lcLocale);
-void FreeFileEntry(TMPQArchive * ha, TFileEntry * pFileEntry);
+int  RenameFileEntry(TMPQArchive * ha, TFileEntry * pFileEntry, const char * szNewFileName);
+void ClearFileEntry(TMPQArchive * ha, TFileEntry * pFileEntry);
+int  FreeFileEntry(TMPQArchive * ha, TFileEntry * pFileEntry);
+
+// Invalidates entries for (listfile) and (attributes)
+void InvalidateInternalFiles(TMPQArchive * ha);
 
 //-----------------------------------------------------------------------------
 // Common functions - MPQ File
@@ -173,7 +177,8 @@ void FreeMPQArchive(TMPQArchive *& ha);
 // Utility functions
 
 bool CheckWildCard(const char * szString, const char * szWildCard);
-const char * GetPlainFileName(const char * szFileName);
+const char * GetPlainFileNameA(const char * szFileName);
+const TCHAR * GetPlainFileNameT(const TCHAR * szFileName);
 bool IsInternalMpqFileName(const char * szFileName);
 
 //-----------------------------------------------------------------------------

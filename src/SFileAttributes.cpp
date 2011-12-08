@@ -9,8 +9,6 @@
 /*****************************************************************************/
 
 #define __STORMLIB_SELF__
-#define __INCLUDE_COMPRESSION__
-#define __INCLUDE_CRYPTOGRAPHY__
 #include "StormLib.h"
 #include "StormCommon.h"
 
@@ -282,9 +280,10 @@ int SAttrFileSaveToMpq(TMPQArchive * ha)
     if(hf != NULL)
     {
         SFileAddFile_Finish(hf);
-        ha->dwFlags |= MPQ_FLAG_ATTRIBS_VALID;
     }
 
+    if(nError == ERROR_SUCCESS)
+        ha->dwFlags &= ~MPQ_FLAG_INV_ATTRIBUTES;
     return nError;
 }
 
@@ -324,8 +323,8 @@ bool WINAPI SFileSetAttributes(HANDLE hMpq, DWORD dwFlags)
     }
 
     // Set the attributes
+    InvalidateInternalFiles(ha);
     ha->dwAttrFlags = (dwFlags & MPQ_ATTRIBUTE_ALL);
-    ha->dwFlags |= MPQ_FLAG_CHANGED;
     return true;
 }
 
@@ -387,7 +386,7 @@ bool WINAPI SFileUpdateFileAttributes(HANDLE hMpq, const char * szFileName)
     md5_done(&md5_state, hf->pFileEntry->md5);
 
     // Remember that we need to save the MPQ tables
-    ha->dwFlags |= MPQ_FLAG_CHANGED;
+    InvalidateInternalFiles(ha);
     SFileCloseFile(hFile);
     return true;
 }

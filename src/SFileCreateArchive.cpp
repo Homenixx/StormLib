@@ -66,7 +66,7 @@ static int WriteNakedMPQHeader(TMPQArchive * ha)
 //-----------------------------------------------------------------------------
 // Creates a new MPQ archive.
 
-bool WINAPI SFileCreateArchive(const char * szMpqName, DWORD dwFlags, DWORD dwMaxFileCount, HANDLE * phMpq)
+bool WINAPI SFileCreateArchive(const TCHAR * szMpqName, DWORD dwFlags, DWORD dwMaxFileCount, HANDLE * phMpq)
 {
     TFileStream * pStream = NULL;           // File stream
     TMPQArchive * ha = NULL;                // MPQ archive handle
@@ -191,19 +191,8 @@ bool WINAPI SFileCreateArchive(const char * szMpqName, DWORD dwFlags, DWORD dwMa
         // Write the naked MPQ header
         nError = WriteNakedMPQHeader(ha);
 
-        //
-        // Note: Don't recalculate position of MPQ tables at this point.
-        // We merely set a flag that indicates that the MPQ tables
-        // have been changed, and SaveMpqTables will do the work when closing the archive.
-        //
-
-        ha->dwFlags |= MPQ_FLAG_CHANGED;
-    }
-
-    // Create initial hash table
-    if(nError == ERROR_SUCCESS)
-    {
-        nError = CreateHashTable(ha, dwHashTableSize);
+        // Remember that the (listfile) and (attributes) need to be saved
+        ha->dwFlags |= MPQ_FLAG_CHANGED | MPQ_FLAG_INV_LISTFILE | MPQ_FLAG_INV_ATTRIBUTES;
     }
 
     // Create initial HET table, if the caller required an MPQ format 3.0 or newer
@@ -212,6 +201,12 @@ bool WINAPI SFileCreateArchive(const char * szMpqName, DWORD dwFlags, DWORD dwMa
         ha->pHetTable = CreateHetTable(ha->dwMaxFileCount, 0x40, true);
         if(ha->pHetTable == NULL)
             nError = ERROR_NOT_ENOUGH_MEMORY;
+    }
+
+    // Create initial hash table
+    if(nError == ERROR_SUCCESS)
+    {
+        nError = CreateHashTable(ha, dwHashTableSize);
     }
 
     // Create initial file table

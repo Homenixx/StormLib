@@ -113,7 +113,7 @@ static DWORD ReloadListFileCache(TListFileCache * pCache)
     // Only do something if the cache is empty
     if(pCache->pPos >= pCache->pEnd)
     {
-        __TryReadBlock:
+//      __TryReadBlock:
 
         // Move the file position forward
         pCache->dwFilePos += CACHE_BUFFER_SIZE;
@@ -131,10 +131,10 @@ static DWORD ReloadListFileCache(TListFileCache * pCache)
 
         // If we didn't read anything, it might mean that the block
         // of the file is not available (in case of partial MPQs).
-        // We sill skip it and try to read next block, until we reach
-        // the end of the file.
+        // We stop reading the file at this point, because the rest
+        // of the listfile is unreliable
         if(dwBytesRead == 0)
-            goto __TryReadBlock;
+            return 0;
 
         // Set the buffer pointers
         pCache->pBegin =
@@ -244,9 +244,24 @@ int SListFileCreateNodeForAllLocales(TMPQArchive * ha, const char * szFileName)
     TFileEntry * pFileEntry;
     TMPQHash * pFirstHash;
     TMPQHash * pHash;
+    bool bNameEntryCreated = false;
+
+    // If we have HET table, use that one
+    if(ha->pHetTable != NULL)
+    {
+        pFileEntry = GetFileEntryAny(ha, szFileName);
+        if(pFileEntry != NULL)
+        {
+            // Allocate file name for the file entry
+            AllocateFileName(pFileEntry, szFileName);
+            bNameEntryCreated = true;
+        }
+
+        return ERROR_SUCCESS;
+    }
 
     // If we have hash table, we use it
-    if(ha->pHashTable != NULL)
+    if(bNameEntryCreated == false && ha->pHashTable != NULL)
     {
         // Look for the first hash table entry for the file
         pFirstHash = pHash = GetFirstHashEntry(ha, szFileName);
@@ -259,26 +274,12 @@ int SListFileCreateNodeForAllLocales(TMPQArchive * ha, const char * szFileName)
             {
                 // Allocate file name for the file entry
                 AllocateFileName(ha->pFileTable + pHash->dwBlockIndex, szFileName);
+                bNameEntryCreated = true;
             }
 
             // Now find the next language version of the file
             pHash = GetNextHashEntry(ha, pFirstHash, pHash);
         }
-
-        return ERROR_SUCCESS;
-    }
-
-    // If we have HET table, use that one
-    if(ha->pHetTable != NULL)
-    {
-        pFileEntry = GetFileEntryAny(ha, szFileName);
-        if(pFileEntry != NULL)
-        {
-            // Allocate file name for the file entry
-            AllocateFileName(pFileEntry, szFileName);
-        }
-
-        return ERROR_SUCCESS;
     }
 
     return ERROR_CAN_NOT_COMPLETE;
@@ -382,17 +383,20 @@ int SListFileSaveToMpq(TMPQArchive * ha)
 
         // Just add "(listfile)" there
         if(nError == ERROR_SUCCESS)
+        {
             WriteListFileLine(hf, LISTFILE_NAME);
+        }
     }
 
     // Finalize the file in the MPQ
     if(hf != NULL)
     {
         SFileAddFile_Finish(hf);
-        ha->dwFlags |= MPQ_FLAG_LISTFILE_VALID;
     }
     
     // Free buffers
+    if(nError == ERROR_SUCCESS)
+        ha->dwFlags &= ~MPQ_FLAG_INV_LISTFILE;
     if(SortTable != NULL)
         FREEMEM(SortTable);
     return nError;
