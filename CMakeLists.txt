@@ -273,8 +273,11 @@ add_library(StormLib_static STATIC ${SRC_FILES} ${SRC_ADDITIONAL_FILES})
 target_link_libraries(StormLib_static ${LINK_LIBS})
 set_target_properties(StormLib_static PROPERTIES OUTPUT_NAME StormLib)
 
-add_executable(StormLib_test ${TEST_SRC_FILES})
-target_link_libraries(StormLib_test StormLib_static)
+option(WITH_TEST "Compile Test application" OFF)
+if(WITH_TEST)
+     add_executable(StormLib_test ${TEST_SRC_FILES})
+     target_link_libraries(StormLib_test StormLib_static)
+endif()
 
 if(APPLE)
     set_target_properties(StormLib PROPERTIES FRAMEWORK true)
@@ -288,3 +291,4 @@ endif()
 
 install(TARGETS StormLib StormLib_static RUNTIME DESTINATION bin LIBRARY DESTINATION lib ARCHIVE DESTINATION lib)
 install(FILES src/StormLib.h src/StormPort.h DESTINATION include)
+
