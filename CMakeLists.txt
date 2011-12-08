@@ -5,8 +5,6 @@ set(SRC_FILES
            src/adpcm/adpcm.cpp
            src/huffman/huff.cpp
            src/jenkins/lookup3.c
-           src/libtomcrypt/src/misc/crypt_libc.c
-           src/libtomcrypt/src/pk/rsa/rsa_verify_simple.c
            src/lzma/C/LzFind.c
            src/lzma/C/LzmaDec.c
            src/lzma/C/LzmaEnc.c
@@ -44,6 +42,7 @@ set(TOMCRYPT_FILES
            src/libtomcrypt/src/misc/crypt_find_prng.c
            src/libtomcrypt/src/misc/crypt_hash_descriptor.c
            src/libtomcrypt/src/misc/crypt_hash_is_valid.c
+           src/libtomcrypt/src/misc/crypt_libc.c
            src/libtomcrypt/src/misc/crypt_ltc_mp_descriptor.c
            src/libtomcrypt/src/misc/crypt_prng_descriptor.c
            src/libtomcrypt/src/misc/crypt_prng_is_valid.c
@@ -91,6 +90,7 @@ set(TOMCRYPT_FILES
            src/libtomcrypt/src/pk/rsa/rsa_import.c
            src/libtomcrypt/src/pk/rsa/rsa_make_key.c
            src/libtomcrypt/src/pk/rsa/rsa_verify_hash.c
+           src/libtomcrypt/src/pk/rsa/rsa_verify_simple.c
 )
 
 set(TOMMATH_FILES
