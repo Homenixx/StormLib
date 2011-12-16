@@ -336,8 +336,8 @@ static void FreeMPQSearch(TMPQSearch *& hs)
     if(hs != NULL)
     {
         if(hs->pSearchTable != NULL)
-            FREEMEM(hs->pSearchTable);
-        FREEMEM(hs);
+            STORM_FREE(hs->pSearchTable);
+        STORM_FREE(hs);
         hs = NULL;
     }
 }
@@ -368,7 +368,7 @@ HANDLE WINAPI SFileFindFirstFile(HANDLE hMpq, const char * szMask, SFILE_FIND_DA
     if(nError == ERROR_SUCCESS)
     {
         nSize = sizeof(TMPQSearch) + strlen(szMask) + 1;
-        if((hs = (TMPQSearch *)ALLOCMEM(char, nSize)) == NULL)
+        if((hs = (TMPQSearch *)STORM_ALLOC(char, nSize)) == NULL)
             nError = ERROR_NOT_ENOUGH_MEMORY;
     }
 
@@ -385,7 +385,7 @@ HANDLE WINAPI SFileFindFirstFile(HANDLE hMpq, const char * szMask, SFILE_FIND_DA
         if(ha->haPatch != NULL)
         {
             hs->dwSearchTableItems = GetSearchTableItems(ha);
-            hs->pSearchTable = ALLOCMEM(TFileEntry *, hs->dwSearchTableItems);
+            hs->pSearchTable = STORM_ALLOC(TFileEntry *, hs->dwSearchTableItems);
             hs->dwFlagMask = MPQ_FILE_EXISTS | MPQ_FILE_PATCH_FILE;
             if(hs->pSearchTable != NULL)
                 memset(hs->pSearchTable, 0, hs->dwSearchTableItems * sizeof(TFileEntry *));

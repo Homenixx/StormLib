@@ -1090,7 +1090,7 @@ static bool EncryptedFile_Read(
     dwBytesToAllocate = (dwBytesToDecrypt + (MPQE_CHUNK_SIZE - 1)) & ~(MPQE_CHUNK_SIZE - 1);
 
     // Allocate buffers for encrypted and decrypted data
-    pbMpqData = ALLOCMEM(BYTE, dwBytesToAllocate);
+    pbMpqData = STORM_ALLOC(BYTE, dwBytesToAllocate);
     if(pbMpqData)
     {
         // Get the offset of the desired data in the cache
@@ -1112,7 +1112,7 @@ static bool EncryptedFile_Read(
         }
 
         // Free decryption buffer        
-        FREEMEM(pbMpqData);
+        STORM_FREE(pbMpqData);
     }
 
     // Free buffers and exit
@@ -1178,7 +1178,7 @@ TFileStream * FileStream_CreateFile(
     if(hFile != INVALID_HANDLE_VALUE)
     {
         // Allocate the FileStream structure and fill it
-        pStream = ALLOCMEM(TFileStream, 1);
+        pStream = STORM_ALLOC(TFileStream, 1);
         if(pStream != NULL)
         {
             // Reset entire structure to zero
@@ -1235,7 +1235,7 @@ TFileStream * FileStream_OpenRawFile(
         return NULL;
 
     // Initialize the file as normal file stream
-    pStream = ALLOCMEM(TFileStream, 1);
+    pStream = STORM_ALLOC(TFileStream, 1);
     if(pStream != NULL)
     {
         // Reset entire structure to zero
@@ -1298,7 +1298,7 @@ TFileStream * FileStream_OpenFile(const TCHAR * szFileName, bool bWriteAccess)
             // Note that we decrement number of parts by one,
             // because there already is one entry in the TPartFileStream structure
             nStructLength = sizeof(TPartFileStream) + (BlockCount - 1) * sizeof(PART_FILE_MAP_ENTRY);
-            pPartStream = (TPartFileStream *)ALLOCMEM(char, nStructLength);
+            pPartStream = (TPartFileStream *)STORM_ALLOC(char, nStructLength);
             if(pPartStream != NULL)
             {
                 // Initialize the part file stream
@@ -1309,7 +1309,7 @@ TFileStream * FileStream_OpenFile(const TCHAR * szFileName, bool bWriteAccess)
                 if(!FileStream_Read(pPartStream, NULL, pPartStream->PartMap, BlockCount * sizeof(PART_FILE_MAP_ENTRY)))
                 {
                     FileStream_Close(pStream);
-                    FREEMEM(pPartStream);
+                    STORM_FREE(pPartStream);
                     return NULL;
                 }
 
@@ -1330,7 +1330,7 @@ TFileStream * FileStream_OpenFile(const TCHAR * szFileName, bool bWriteAccess)
                 pPartStream->BlockCount = BlockCount;
                 pPartStream->BlockSize = PartHdr.BlockSize;
 
-                FREEMEM(pStream);
+                STORM_FREE(pStream);
             }
             return pPartStream;
         }
@@ -1352,7 +1352,7 @@ TFileStream * FileStream_OpenEncrypted(const TCHAR * szFileName)
     if(pStream)
     {
         // Allocate new stream for handling encryption
-        pEncryptedStream = ALLOCMEM(TEncryptedStream, 1);
+        pEncryptedStream = STORM_ALLOC(TEncryptedStream, 1);
         if(pEncryptedStream != NULL)
         {
             // Copy the file stream to the encrypted stream
@@ -1369,12 +1369,12 @@ TFileStream * FileStream_OpenEncrypted(const TCHAR * szFileName)
             if(!DetectFileKey(pEncryptedStream))
             {
                 SetLastError(ERROR_UNKNOWN_FILE_KEY);
-                FREEMEM(pEncryptedStream);
+                STORM_FREE(pEncryptedStream);
                 pEncryptedStream = NULL;
             }
         }
 
-        FREEMEM(pStream);
+        STORM_FREE(pStream);
         return pEncryptedStream;
     }
 
@@ -1580,7 +1580,7 @@ void FileStream_Close(TFileStream * pStream)
             CloseTheFile(pStream->hFile);
 
         // Free the stream itself
-        FREEMEM(pStream);
+        STORM_FREE(pStream);
     }
 }
 
@@ -1750,7 +1750,7 @@ int main(void)
         FileStream_Read(pStream, NULL, &MpqHeader, MPQ_HEADER_SIZE_V2);
 
         // Read the hash table
-        pHash = ALLOCMEM(TMPQHash, MpqHeader.dwHashTableSize);
+        pHash = STORM_ALLOC(TMPQHash, MpqHeader.dwHashTableSize);
         FilePos.HighPart = 0;
         FilePos.LowPart = MpqHeader.dwHashTablePos;
         FileStream_Read(pStream, &FilePos, pHash, MpqHeader.dwHashTableSize * sizeof(TMPQHash));
@@ -1802,7 +1802,7 @@ int main(void)
         //
 
         // Read the block table
-        pBlock = ALLOCMEM(TMPQBlock, MpqHeader.dwBlockTableSize);
+        pBlock = STORM_ALLOC(TMPQBlock, MpqHeader.dwBlockTableSize);
         FilePos.HighPart = 0;
         FilePos.LowPart = MpqHeader.dwBlockTablePos;
         FileStream_Read(pStream, &FilePos, pBlock, MpqHeader.dwBlockTableSize * sizeof(TMPQBlock));

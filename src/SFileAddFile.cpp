@@ -91,7 +91,7 @@ static int WriteDataToMpqFile(
                 // for case if the compression method performs a buffer overrun
                 if((pFileEntry->dwFlags & MPQ_FILE_COMPRESSED) && pbCompressed == NULL)
                 {
-                    pbToWrite = pbCompressed = ALLOCMEM(BYTE, hf->dwSectorSize + 0x100);
+                    pbToWrite = pbCompressed = STORM_ALLOC(BYTE, hf->dwSectorSize + 0x100);
                     if(pbCompressed == NULL)
                         nError = ERROR_NOT_ENOUGH_MEMORY;
                 }
@@ -171,7 +171,7 @@ static int WriteDataToMpqFile(
 
     // Cleanup
     if(pbCompressed != NULL)
-        FREEMEM(pbCompressed);
+        STORM_FREE(pbCompressed);
     return nError;
 }
 
@@ -226,7 +226,7 @@ static int RecryptFileData(
     if(hf->SectorOffsets != NULL)
     {
         // Allocate secondary buffer for sectors copy
-        DWORD * SectorOffsetsCopy = (DWORD *)ALLOCMEM(BYTE, hf->SectorOffsets[0]);
+        DWORD * SectorOffsetsCopy = (DWORD *)STORM_ALLOC(BYTE, hf->SectorOffsets[0]);
         DWORD dwSectorOffsLen = hf->SectorOffsets[0];
 
         if(SectorOffsetsCopy == NULL)
@@ -240,7 +240,7 @@ static int RecryptFileData(
         // Write the recrypted array back
         if(!FileStream_Write(ha->pStream, &hf->RawFilePos, SectorOffsetsCopy, dwSectorOffsLen))
             nError = GetLastError();
-        FREEMEM(SectorOffsetsCopy);
+        STORM_FREE(SectorOffsetsCopy);
     }
 
     // Now we have to recrypt all file sectors. We do it without
@@ -811,7 +811,7 @@ bool WINAPI SFileAddFileEx(
     if(nError == ERROR_SUCCESS)
     {
         dwBytesRemaining = (DWORD)FileSize;
-        pbFileData = ALLOCMEM(BYTE, dwSectorSize);
+        pbFileData = STORM_ALLOC(BYTE, dwSectorSize);
         if(pbFileData == NULL)
             nError = ERROR_NOT_ENOUGH_MEMORY;
     }
@@ -874,7 +874,7 @@ bool WINAPI SFileAddFileEx(
 
     // Cleanup and exit
     if(pbFileData != NULL)
-        FREEMEM(pbFileData);
+        STORM_FREE(pbFileData);
     if(pStream != NULL)
         FileStream_Close(pStream);
     if(nError != ERROR_SUCCESS)

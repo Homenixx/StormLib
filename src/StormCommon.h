@@ -73,6 +73,40 @@
 #define MAKE_OFFSET64(hi, lo)      (((ULONGLONG)hi << 32) | lo)
 
 //-----------------------------------------------------------------------------
+// Memory management
+//
+// We use our own macros for allocating/freeing memory. If you want
+// to redefine them, please keep the following rules
+//
+//  - The memory allocation must return NULL if not enough memory
+//    (i.e not to throw exception)
+//  - It is not necessary to fill the allocated buffer with zeros
+//  - Memory freeing function doesn't have to test the pointer to NULL.
+//
+
+#if defined(_MSC_VER) && defined(_DEBUG)
+__inline void * DebugMalloc(char * /* szFile */, int /* nLine */, size_t nSize)
+{
+//  return new BYTE[nSize];
+    return HeapAlloc(GetProcessHeap(), 0, nSize);
+}
+
+__inline void DebugFree(void * ptr)
+{
+//  delete [] ptr;
+    HeapFree(GetProcessHeap(), 0, ptr);
+}
+
+#define STORM_ALLOC(type, nitems) (type *)DebugMalloc(__FILE__, __LINE__, (nitems) * sizeof(type))
+#define STORM_FREE(ptr)           DebugFree(ptr)
+#else
+
+#define STORM_ALLOC(type, nitems)   (type *)malloc((nitems) * sizeof(type))
+#define STORM_FREE(ptr) free(ptr)
+
+#endif
+
+//-----------------------------------------------------------------------------
 // StormLib internal global variables
 
 extern DWORD dwGlobalFlags;                     // Global StormLib flags
@@ -95,7 +129,7 @@ DWORD GetHashTableSizeForFileCount(DWORD dwFileCount);
 bool IsPseudoFileName(const char * szFileName, LPDWORD pdwFileIndex);
 ULONGLONG HashStringJenkins(const char * szFileName);
 
-void ConvertMpqHeaderToFormat4(TMPQArchive * ha, ULONGLONG FileSize, DWORD dwFlags);
+int ConvertMpqHeaderToFormat4(TMPQArchive * ha, ULONGLONG FileSize, DWORD dwFlags);
 
 void  EncryptMpqBlock(void * pvFileBlock, DWORD dwLength, DWORD dwKey);
 void  DecryptMpqBlock(void * pvFileBlock, DWORD dwLength, DWORD dwKey);
@@ -103,6 +137,10 @@ void  DecryptMpqBlock(void * pvFileBlock, DWORD dwLength, DWORD dwKey);
 DWORD DetectFileKeyBySectorSize(LPDWORD SectorOffsets, DWORD decrypted);
 DWORD DetectFileKeyByContent(void * pvFileContent, DWORD dwFileSize);
 DWORD DecryptFileKey(const char * szFileName, ULONGLONG MpqPos, DWORD dwFileSize, DWORD dwFlags);
+
+bool IsValidMD5(LPBYTE pbMd5);
+bool VerifyDataBlockHash(void * pvDataBlock, DWORD cbDataBlock, LPBYTE expected_md5);
+void CalculateDataBlockHash(void * pvDataBlock, DWORD cbDataBlock, LPBYTE md5_hash);
 
 //-----------------------------------------------------------------------------
 // Handle validation functions

@@ -151,7 +151,7 @@ static TBitArray * CreateBitArray(
     size_t nSize = sizeof(TBitArray) + (NumberOfBits + 7) / 8;
 
     // Allocate the bit array
-    pBitArray = (TBitArray *)ALLOCMEM(BYTE, nSize);
+    pBitArray = (TBitArray *)STORM_ALLOC(BYTE, nSize);
     if(pBitArray != NULL)
     {
         memset(pBitArray, FillValue, nSize);
@@ -384,7 +384,7 @@ static TMPQHash * TranslateHashTable(
     size_t HashTableSize;
 
     // Allocate copy of the hash table
-    pHashTable = ALLOCMEM(TMPQHash, ha->pHeader->dwHashTableSize);
+    pHashTable = STORM_ALLOC(TMPQHash, ha->pHeader->dwHashTableSize);
     if(pHashTable != NULL)
     {
         // Copy the hash table
@@ -413,7 +413,7 @@ static TMPQBlock * TranslateBlockTable(
     bool bNeedHiBlockTable = false;
 
     // Allocate copy of the hash table
-    pBlockTable = pBlock = ALLOCMEM(TMPQBlock, ha->dwFileTableSize);
+    pBlockTable = pBlock = STORM_ALLOC(TMPQBlock, ha->dwFileTableSize);
     if(pBlockTable != NULL)
     {
         // Copy the block table
@@ -452,7 +452,7 @@ static USHORT * TranslateHiBlockTable(
     size_t HiBlockTableSize;
 
     // Allocate copy of the hash table
-    pHiBlockTable = pHiBlock = ALLOCMEM(USHORT, ha->dwFileTableSize);
+    pHiBlockTable = pHiBlock = STORM_ALLOC(USHORT, ha->dwFileTableSize);
     if(pHiBlockTable != NULL)
     {
         // Copy the block table
@@ -485,14 +485,14 @@ TMPQExtTable * LoadExtTable(
     if(ByteOffset != 0 && Size != 0)
     {
         // Allocate size for the compressed table
-        pExtTable = (TMPQExtTable *)ALLOCMEM(BYTE, Size);
+        pExtTable = (TMPQExtTable *)STORM_ALLOC(BYTE, Size);
         if(pExtTable != NULL)
         {
             // Load the table from the MPQ
             ByteOffset += ha->MpqPos;
             if(!FileStream_Read(ha->pStream, &ByteOffset, pExtTable, (DWORD)Size))
             {
-                FREEMEM(pExtTable);
+                STORM_FREE(pExtTable);
                 return NULL;
             }
 
@@ -500,7 +500,7 @@ TMPQExtTable * LoadExtTable(
             BSWAP_ARRAY32_UNSIGNED(pExtTable, sizeof(TMPQExtTable));
             if(pExtTable->dwSignature != dwSignature)
             {
-                FREEMEM(pExtTable);
+                STORM_FREE(pExtTable);
                 return NULL;
             }
 
@@ -513,7 +513,7 @@ TMPQExtTable * LoadExtTable(
             if((pExtTable->dwDataSize + sizeof(TMPQExtTable)) > Size)
             {
                 pCompressed = pExtTable;
-                pExtTable = (TMPQExtTable *)ALLOCMEM(BYTE, sizeof(TMPQExtTable) + pCompressed->dwDataSize);
+                pExtTable = (TMPQExtTable *)STORM_ALLOC(BYTE, sizeof(TMPQExtTable) + pCompressed->dwDataSize);
                 if(pExtTable != NULL)
                 {
                     int cbOutBuffer = (int)pCompressed->dwDataSize;
@@ -527,7 +527,7 @@ TMPQExtTable * LoadExtTable(
                 }
 
                 // Free the compressed block
-                FREEMEM(pCompressed);
+                STORM_FREE(pCompressed);
             }
         }
     }
@@ -541,7 +541,7 @@ static int SaveMpqTable(
     void * pMpqTable,
     ULONGLONG ByteOffset,
     size_t Size,
-    unsigned char * md5_digest,
+    unsigned char * md5,
     DWORD dwKey,
     bool bCompress)
 {
@@ -556,7 +556,7 @@ static int SaveMpqTable(
         int cbInBuffer = (int)Size;
 
         // Allocate extra space for compressed table
-        pCompressed = ALLOCMEM(BYTE, Size);
+        pCompressed = STORM_ALLOC(BYTE, Size);
         if(pCompressed == NULL)
             return ERROR_NOT_ENOUGH_MEMORY;
 
@@ -566,7 +566,7 @@ static int SaveMpqTable(
         // If the compression failed, revert it. Otherwise, swap the tables
         if(cbOutBuffer >= cbInBuffer)
         {
-            FREEMEM(pCompressed);
+            STORM_FREE(pCompressed);
             pCompressed = NULL;
         }
         else
@@ -584,13 +584,9 @@ static int SaveMpqTable(
     }
 
     // Calculate the MD5
-    if(md5_digest != NULL)
+    if(md5 != NULL)
     {
-        hash_state md5_state;
-
-        md5_init(&md5_state);
-        md5_process(&md5_state, (unsigned char *)pMpqTable, (DWORD)Size);
-        md5_done(&md5_state, md5_digest);
+        CalculateDataBlockHash(pMpqTable, (DWORD)Size, md5);
     }
 
     // Save the table to the MPQ
@@ -601,7 +597,7 @@ static int SaveMpqTable(
 
     // Free the compressed table, if any
     if(pCompressed != NULL)
-        FREEMEM(pCompressed);
+        STORM_FREE(pCompressed);
     return nError;
 }
 
@@ -610,7 +606,7 @@ static int SaveExtTable(
     TMPQExtTable * pExtTable,
     ULONGLONG ByteOffset,
     DWORD dwTableSize,
-    unsigned char * md5_digest,
+    unsigned char * md5,
     DWORD dwKey,
     bool bCompress,
     LPDWORD pcbTotalSize)
@@ -627,7 +623,7 @@ static int SaveExtTable(
         int cbInBuffer = (int)dwTableSize;
 
         // Allocate extra space for compressed table
-        pCompressed = (TMPQExtTable *)ALLOCMEM(BYTE, dwTableSize);
+        pCompressed = (TMPQExtTable *)STORM_ALLOC(BYTE, dwTableSize);
         if(pCompressed == NULL)
             return ERROR_NOT_ENOUGH_MEMORY;
 
@@ -640,7 +636,7 @@ static int SaveExtTable(
         // If the compression failed, revert it. Otherwise, swap the tables
         if(cbOutBuffer >= cbInBuffer)
         {
-            FREEMEM(pCompressed);
+            STORM_FREE(pCompressed);
             pCompressed = NULL;
         }
         else
@@ -658,13 +654,9 @@ static int SaveExtTable(
     }
 
     // Calculate the MD5 of the table after
-    if(md5_digest != NULL)
+    if(md5 != NULL)
     {
-        hash_state md5_state;
-
-        md5_init(&md5_state);
-        md5_process(&md5_state, (unsigned char *)pExtTable, dwTableSize);
-        md5_done(&md5_state, md5_digest);
+        CalculateDataBlockHash(pExtTable, dwTableSize, md5);
     }
 
     // Save the table to the MPQ
@@ -691,7 +683,7 @@ static int SaveExtTable(
 
     // Free the compressed table, if any
     if(pCompressed != NULL)
-        FREEMEM(pCompressed);
+        STORM_FREE(pCompressed);
     return nError;
 }
 
@@ -721,7 +713,7 @@ TMPQHetTable * CreateHetTable(DWORD dwMaxFileCount, DWORD dwHashBitSize, bool bC
 {
     TMPQHetTable * pHetTable;
 
-    pHetTable = ALLOCMEM(TMPQHetTable, 1);
+    pHetTable = STORM_ALLOC(TMPQHetTable, 1);
     if(pHetTable != NULL)
     {
         pHetTable->dwIndexSizeTotal = 0;
@@ -737,7 +729,7 @@ TMPQHetTable * CreateHetTable(DWORD dwMaxFileCount, DWORD dwHashBitSize, bool bC
         pHetTable->dwIndexSize      = pHetTable->dwIndexSizeTotal;
 
         // Allocate hash table
-        pHetTable->pHetHashes = ALLOCMEM(BYTE, pHetTable->dwHashTableSize);
+        pHetTable->pHetHashes = STORM_ALLOC(BYTE, pHetTable->dwHashTableSize);
         memset(pHetTable->pHetHashes, 0, pHetTable->dwHashTableSize);
 
         // If we shall create empty HET table, we have to allocate empty block index table as well
@@ -818,7 +810,7 @@ static TMPQExtTable * TranslateHetTable(TMPQHetTable * pHetTable, ULONGLONG * pc
     HetTableSize = HetHeader.dwTableSize;
 
     // Allocate space for the linear table
-    pbLinearTable = ALLOCMEM(BYTE, sizeof(TMPQExtTable) + HetTableSize);
+    pbLinearTable = STORM_ALLOC(BYTE, sizeof(TMPQExtTable) + HetTableSize);
     if(pbLinearTable != NULL)
     {
         // Create the common ext table header
@@ -1002,11 +994,11 @@ void FreeHetTable(TMPQHetTable * pHetTable)
     if(pHetTable != NULL)
     {
         if(pHetTable->pHetHashes != NULL)
-            FREEMEM(pHetTable->pHetHashes);
+            STORM_FREE(pHetTable->pHetHashes);
         if(pHetTable->pBetIndexes != NULL)
-            FREEMEM(pHetTable->pBetIndexes);
+            STORM_FREE(pHetTable->pBetIndexes);
 
-        FREEMEM(pHetTable);
+        STORM_FREE(pHetTable);
     }
 }
 
@@ -1105,7 +1097,7 @@ TMPQBetTable * CreateBetTable(DWORD dwFileCount)
     TMPQBetTable * pBetTable;
 
     // Allocate BET table
-    pBetTable = ALLOCMEM(TMPQBetTable, 1);
+    pBetTable = STORM_ALLOC(TMPQBetTable, 1);
     if(pBetTable != NULL)
     {
         memset(pBetTable, 0, sizeof(TMPQBetTable));
@@ -1170,7 +1162,7 @@ static TMPQBetTable * TranslateBetTable(
                 if(BetHeader.dwFlagCount != 0)
                 {
                     // Allocate array for file flags and load it
-                    pBetTable->pFileFlags = ALLOCMEM(DWORD, BetHeader.dwFlagCount);
+                    pBetTable->pFileFlags = STORM_ALLOC(DWORD, BetHeader.dwFlagCount);
                     if(pBetTable->pFileFlags != NULL)
                     {
                         LengthInBytes = BetHeader.dwFlagCount * sizeof(DWORD);
@@ -1236,7 +1228,7 @@ TMPQExtTable * TranslateBetTable(
                    BetHeader.dwBetHashArraySize;
 
     // Allocate space
-    pbLinearTable = ALLOCMEM(BYTE, sizeof(TMPQExtTable) + BetTableSize);
+    pbLinearTable = STORM_ALLOC(BYTE, sizeof(TMPQExtTable) + BetTableSize);
     if(pbLinearTable != NULL)
     {
         // Create the common ext table header
@@ -1303,7 +1295,7 @@ TMPQExtTable * TranslateBetTable(
             pbTrgData += LengthInBytes;
 
             // Free the bit array
-            FREEMEM(pBitArray);
+            STORM_FREE(pBitArray);
         }
 
         // Create bit array for BET hashes
@@ -1341,7 +1333,7 @@ TMPQExtTable * TranslateBetTable(
             pbTrgData += LengthInBytes;
 
             // Free the bit array
-            FREEMEM(pBitArray);
+            STORM_FREE(pBitArray);
         }
 
         // Write the size of the BET table in the MPQ
@@ -1359,13 +1351,13 @@ void FreeBetTable(TMPQBetTable * pBetTable)
     if(pBetTable != NULL)
     {
         if(pBetTable->pFileTable != NULL)
-            FREEMEM(pBetTable->pFileTable);
+            STORM_FREE(pBetTable->pFileTable);
         if(pBetTable->pFileFlags != NULL)
-            FREEMEM(pBetTable->pFileFlags);
+            STORM_FREE(pBetTable->pFileFlags);
         if(pBetTable->pBetHashes != NULL)
-            FREEMEM(pBetTable->pBetHashes);
+            STORM_FREE(pBetTable->pBetHashes);
 
-        FREEMEM(pBetTable);
+        STORM_FREE(pBetTable);
     }
 }
 
@@ -1464,14 +1456,14 @@ void AllocateFileName(TFileEntry * pFileEntry, const char * szFileName)
     if(IsPseudoFileName(pFileEntry->szFileName, NULL))
     {
         if(pFileEntry->szFileName != NULL)
-            FREEMEM(pFileEntry->szFileName);
+            STORM_FREE(pFileEntry->szFileName);
         pFileEntry->szFileName = NULL;
     }
 
     // Only allocate new file name if it's not there yet
     if(pFileEntry->szFileName == NULL)
     {
-        pFileEntry->szFileName = ALLOCMEM(char, strlen(szFileName) + 1);
+        pFileEntry->szFileName = STORM_ALLOC(char, strlen(szFileName) + 1);
         if(pFileEntry->szFileName != NULL)
             strcpy(pFileEntry->szFileName, szFileName);
     }
@@ -1639,7 +1631,7 @@ int RenameFileEntry(
 
     // Free the old file name
     if(pFileEntry->szFileName != NULL)
-        FREEMEM(pFileEntry->szFileName);
+        STORM_FREE(pFileEntry->szFileName);
     pFileEntry->szFileName = NULL;
 
     // Allocate new file name
@@ -1706,7 +1698,7 @@ void ClearFileEntry(
 
     // Free the file name, and zero the entire entry
     if(pFileEntry->szFileName != NULL)
-        FREEMEM(pFileEntry->szFileName);
+        STORM_FREE(pFileEntry->szFileName);
     memset(pFileEntry, 0, sizeof(TFileEntry));
 }
 
@@ -1839,7 +1831,7 @@ int CreateHashTable(TMPQArchive * ha, DWORD dwHashTableSize)
     assert(ha->pHashTable == NULL);
 
     // Create the hash table
-    pHashTable = ALLOCMEM(TMPQHash, dwHashTableSize);
+    pHashTable = STORM_ALLOC(TMPQHash, dwHashTableSize);
     if(pHashTable == NULL)
         return ERROR_NOT_ENOUGH_MEMORY;
 
@@ -1872,7 +1864,7 @@ int LoadHashTable(TMPQArchive * ha)
 
     // Allocate buffer for the hash table
     dwTableSize = pHeader->dwHashTableSize * sizeof(TMPQHash);
-    pHashTable = ALLOCMEM(TMPQHash, pHeader->dwHashTableSize);
+    pHashTable = STORM_ALLOC(TMPQHash, pHeader->dwHashTableSize);
     if(pHashTable == NULL)
         return ERROR_NOT_ENOUGH_MEMORY;
 
@@ -1891,7 +1883,7 @@ int LoadHashTable(TMPQArchive * ha)
     nError = LoadMpqTable(ha, ByteOffset, pHashTable, dwCmpSize, dwTableSize, MPQ_KEY_HASH_TABLE);
     if(nError != ERROR_SUCCESS)
     {
-        FREEMEM(pHashTable);
+        STORM_FREE(pHashTable);
         pHashTable = NULL;
         return nError;
     }
@@ -1927,7 +1919,7 @@ int LoadHetTable(TMPQArchive * ha)
             if(ha->pHetTable != NULL)
                 ha->dwMaxFileCount = ha->pHetTable->dwMaxFileCount;
 
-            FREEMEM(pExtTable);
+            STORM_FREE(pExtTable);
         }
 
         // If the HET hable failed to load, it's corrupt.
@@ -1955,7 +1947,7 @@ TMPQBetTable * LoadBetTable(TMPQArchive * ha)
             // If succeeded, we translate the BET table
             // to more readable form
             pBetTable = TranslateBetTable(ha, pExtTable);
-            FREEMEM(pExtTable);
+            STORM_FREE(pExtTable);
         }
     }
 
@@ -2011,7 +2003,7 @@ int BuildFileTable_Classic(
 
         // Allocate space for the block table
         // Note: pHeader->dwBlockTableSize can be zero !!!
-        pBlockTable = ALLOCMEM(TMPQBlock, ha->dwMaxFileCount);
+        pBlockTable = STORM_ALLOC(TMPQBlock, ha->dwMaxFileCount);
         if(pBlockTable != NULL)
         {
             ULONGLONG ByteOffset = ha->MpqPos + MAKE_OFFSET64(pHeader->wBlockTablePosHi, pHeader->dwBlockTablePos);
@@ -2092,7 +2084,7 @@ int BuildFileTable_Classic(
             }
 
             // Free the block table
-            FREEMEM(pBlockTable);
+            STORM_FREE(pBlockTable);
         }
         else
         {
@@ -2109,7 +2101,7 @@ int BuildFileTable_Classic(
 
         // Allocate space for the hi-block table
         // Note: pHeader->dwBlockTableSize can be zero !!!
-        pHiBlockTable = ALLOCMEM(USHORT, pHeader->dwBlockTableSize + 1);
+        pHiBlockTable = STORM_ALLOC(USHORT, pHeader->dwBlockTableSize + 1);
         if(pHiBlockTable != NULL)
         {
             // Load the hi-block table. It is not encrypted, nor compressed
@@ -2132,7 +2124,7 @@ int BuildFileTable_Classic(
             }
 
             // Free the hi-block table
-            FREEMEM(pHiBlockTable);
+            STORM_FREE(pHiBlockTable);
         }
         else
         {
@@ -2259,7 +2251,7 @@ int BuildFileTable(TMPQArchive * ha, ULONGLONG FileSize)
     assert(ha->dwMaxFileCount != 0);
 
     // Allocate the file table with size determined before
-    pFileTable = ALLOCMEM(TFileEntry, ha->dwMaxFileCount);
+    pFileTable = STORM_ALLOC(TFileEntry, ha->dwMaxFileCount);
     if(pFileTable == NULL)
         return ERROR_NOT_ENOUGH_MEMORY;
 
@@ -2289,7 +2281,7 @@ int BuildFileTable(TMPQArchive * ha, ULONGLONG FileSize)
     // If something failed, we free the file table entry
     if(bFileTableCreated == false)
     {
-        FREEMEM(pFileTable);
+        STORM_FREE(pFileTable);
         return ERROR_FILE_CORRUPT;
     }
 
@@ -2429,16 +2421,12 @@ int SaveMPQTables(TMPQArchive * ha)
     // Write the MPQ header
     if(nError == ERROR_SUCCESS)
     {
-        hash_state md5_state;
-
         // Update the size of the archive
         pHeader->ArchiveSize64 = TablePos;
         pHeader->dwArchiveSize = (DWORD)TablePos;
         
         // Update the MD5 of the archive header
-        md5_init(&md5_state);
-        md5_process(&md5_state, (unsigned char *)pHeader, MPQ_HEADER_SIZE_V4 - MD5_DIGEST_SIZE);
-        md5_done(&md5_state, pHeader->MD5_MpqHeader);
+        CalculateDataBlockHash(pHeader, MPQ_HEADER_SIZE_V4 - MD5_DIGEST_SIZE, pHeader->MD5_MpqHeader);
 
         // Write the MPQ header to the file
         BSWAP_TMPQHEADER(pHeader);
@@ -2453,14 +2441,14 @@ int SaveMPQTables(TMPQArchive * ha)
 
     // Cleanup and exit
     if(pHetTable != NULL)
-        FREEMEM(pHetTable);
+        STORM_FREE(pHetTable);
     if(pBetTable != NULL)
-        FREEMEM(pBetTable);
+        STORM_FREE(pBetTable);
     if(pHashTable != NULL)
-        FREEMEM(pHashTable);
+        STORM_FREE(pHashTable);
     if(pBlockTable != NULL)
-        FREEMEM(pBlockTable);
+        STORM_FREE(pBlockTable);
     if(pHiBlockTable != NULL)
-        FREEMEM(pHiBlockTable);
+        STORM_FREE(pHiBlockTable);
     return nError;
 }

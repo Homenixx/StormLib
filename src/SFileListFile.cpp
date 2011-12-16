@@ -67,7 +67,7 @@ static TListFileCache * CreateListFileCache(HANDLE hMpq, const char * szListFile
     // Allocate cache for one file block
     if(nError == ERROR_SUCCESS)
     {
-        pCache = (TListFileCache *)ALLOCMEM(TListFileCache, 1);
+        pCache = (TListFileCache *)STORM_ALLOC(TListFileCache, 1);
         if(pCache == NULL)
             nError = ERROR_NOT_ENOUGH_MEMORY;
     }
@@ -299,7 +299,7 @@ int SListFileSaveToMpq(TMPQArchive * ha)
     int nError = ERROR_SUCCESS;
 
     // Allocate the table for sorting listfile
-    SortTable = ALLOCMEM(char*, ha->dwFileTableSize);
+    SortTable = STORM_ALLOC(char*, ha->dwFileTableSize);
     if(SortTable == NULL)
         return ERROR_NOT_ENOUGH_MEMORY;
 
@@ -398,7 +398,7 @@ int SListFileSaveToMpq(TMPQArchive * ha)
     if(nError == ERROR_SUCCESS)
         ha->dwFlags &= ~MPQ_FLAG_INV_LISTFILE;
     if(SortTable != NULL)
-        FREEMEM(SortTable);
+        STORM_FREE(SortTable);
     return nError;
 }
 
@@ -466,7 +466,7 @@ HANDLE WINAPI SListFileFindFirstFile(HANDLE hMpq, const char * szListFile, const
     // Allocate file mask
     if(nError == ERROR_SUCCESS && szMask != NULL)
     {
-        pCache->szMask = ALLOCMEM(char, strlen(szMask) + 1);
+        pCache->szMask = STORM_ALLOC(char, strlen(szMask) + 1);
         if(pCache->szMask != NULL)
             strcpy(pCache->szMask, szMask);
         else
@@ -543,9 +543,9 @@ bool WINAPI SListFileFindClose(HANDLE hFind)
         if(pCache->hFile != NULL)
             SFileCloseFile(pCache->hFile);
         if(pCache->szMask != NULL)
-            FREEMEM(pCache->szMask);
+            STORM_FREE(pCache->szMask);
 
-        FREEMEM(pCache);
+        STORM_FREE(pCache);
         return true;
     }
 

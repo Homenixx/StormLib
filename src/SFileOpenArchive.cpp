@@ -163,7 +163,7 @@ bool WINAPI SFileOpenArchive(
     if(nError == ERROR_SUCCESS)
     {
         FileStream_GetSize(pStream, FileSize);
-        if((ha = ALLOCMEM(TMPQArchive, 1)) == NULL)
+        if((ha = STORM_ALLOC(TMPQArchive, 1)) == NULL)
             nError = ERROR_NOT_ENOUGH_MEMORY;
     }
 
@@ -241,7 +241,7 @@ bool WINAPI SFileOpenArchive(
 
                 // Now convert the header to version 4
                 BSWAP_TMPQHEADER(ha->pHeader);
-                ConvertMpqHeaderToFormat4(ha, FileSize, dwFlags);
+                nError = ConvertMpqHeaderToFormat4(ha, FileSize, dwFlags);
                 break;
             }
 

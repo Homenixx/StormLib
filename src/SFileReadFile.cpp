@@ -183,7 +183,7 @@ static int ReadMpqSectors(TMPQFile * hf, LPBYTE pbBuffer, DWORD dwByteOffset, DW
 //      }
 
         // If the file is compressed, also allocate secondary buffer
-        pbInSector = pbRawSector = ALLOCMEM(BYTE, dwBytesToRead);
+        pbInSector = pbRawSector = STORM_ALLOC(BYTE, dwBytesToRead);
         if(pbRawSector == NULL)
             return ERROR_NOT_ENOUGH_MEMORY;
 
@@ -301,7 +301,7 @@ static int ReadMpqSectors(TMPQFile * hf, LPBYTE pbBuffer, DWORD dwByteOffset, DW
 
     // Free all used buffers
     if(pbRawSector != NULL)
-        FREEMEM(pbRawSector);
+        STORM_FREE(pbRawSector);
     
     // Give the caller thenumber of bytes read
     *pdwBytesRead = dwBytesRead;
@@ -348,14 +348,14 @@ static int ReadMpqFileSingleUnit(TMPQFile * hf, void * pvBuffer, DWORD dwToRead,
         if(hf->pPatchInfo != NULL)
         {
             // Allocate space for 
-            pbCompressed = ALLOCMEM(BYTE, pFileEntry->dwCmpSize);
+            pbCompressed = STORM_ALLOC(BYTE, pFileEntry->dwCmpSize);
             if(pbCompressed == NULL)
                 return ERROR_NOT_ENOUGH_MEMORY;
 
             // Read the entire file
             if(!FileStream_Read(ha->pStream, &RawFilePos, pbCompressed, pFileEntry->dwCmpSize))
             {
-                FREEMEM(pbCompressed);
+                STORM_FREE(pbCompressed);
                 return GetLastError();
             }
 
@@ -373,7 +373,7 @@ static int ReadMpqFileSingleUnit(TMPQFile * hf, void * pvBuffer, DWORD dwToRead,
                                                  (int)pFileEntry->dwCmpSize);
                 if(nResult == 0)
                 {
-                    FREEMEM(pbCompressed);
+                    STORM_FREE(pbCompressed);
                     return ERROR_FILE_CORRUPT;
                 }
             }
@@ -383,14 +383,14 @@ static int ReadMpqFileSingleUnit(TMPQFile * hf, void * pvBuffer, DWORD dwToRead,
             }
 
             // Free the decompression buffer.
-            FREEMEM(pbCompressed);
+            STORM_FREE(pbCompressed);
         }
         else
         {
             // If the file is compressed, we have to allocate buffer for compressed data
             if(pFileEntry->dwCmpSize < hf->dwDataSize)
             {
-                pbCompressed = ALLOCMEM(BYTE, pFileEntry->dwCmpSize);
+                pbCompressed = STORM_ALLOC(BYTE, pFileEntry->dwCmpSize);
                 if(pbCompressed == NULL)
                     return ERROR_NOT_ENOUGH_MEMORY;
                 pbRawData = pbCompressed;
@@ -399,7 +399,7 @@ static int ReadMpqFileSingleUnit(TMPQFile * hf, void * pvBuffer, DWORD dwToRead,
             // Read the entire file
             if(!FileStream_Read(ha->pStream, &RawFilePos, pbRawData, pFileEntry->dwCmpSize))
             {
-                FREEMEM(pbCompressed);
+                STORM_FREE(pbCompressed);
                 return GetLastError();
             }
 
@@ -424,7 +424,7 @@ static int ReadMpqFileSingleUnit(TMPQFile * hf, void * pvBuffer, DWORD dwToRead,
                     nResult = SCompDecompress((char *)hf->pbFileSector, &cbOutBuffer, (char *)pbRawData, (int)pFileEntry->dwCmpSize);
 
                 // Free the decompression buffer.
-                FREEMEM(pbCompressed);
+                STORM_FREE(pbCompressed);
                 if(nResult == 0)
                     return ERROR_FILE_CORRUPT;
             }
@@ -596,7 +596,7 @@ static int ReadMpqFilePatchFile(TMPQFile * hf, void * pvBuffer, DWORD dwToRead, 
     if(hf->pbFileData == NULL)
     {
         // Load the original file and store its content to "pbOldData"
-        hf->pbFileData = ALLOCMEM(BYTE, hf->pFileEntry->dwFileSize);
+        hf->pbFileData = STORM_ALLOC(BYTE, hf->pFileEntry->dwFileSize);
         hf->cbFileData = hf->pFileEntry->dwFileSize;
         if(hf->pbFileData == NULL)
             return ERROR_NOT_ENOUGH_MEMORY;

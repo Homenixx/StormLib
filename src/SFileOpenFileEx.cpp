@@ -370,7 +370,7 @@ bool WINAPI SFileOpenFileEx(HANDLE hMpq, const char * szFileName, DWORD dwSearch
     // Allocate file handle
     if(nError == ERROR_SUCCESS)
     {
-        if((hf = ALLOCMEM(TMPQFile, 1)) == NULL)
+        if((hf = STORM_ALLOC(TMPQFile, 1)) == NULL)
             nError = ERROR_NOT_ENOUGH_MEMORY;
     }
 

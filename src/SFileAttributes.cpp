@@ -52,11 +52,18 @@ int SAttrLoadAttributes(TMPQArchive * ha)
 
         // Load the content of the attributes file
         SFileReadFile(hFile, &AttrHeader, sizeof(MPQ_ATTRIBUTES_HEADER), &dwBytesRead, NULL);
-        AttrHeader.dwVersion = BSWAP_INT32_UNSIGNED(AttrHeader.dwVersion);
-        AttrHeader.dwFlags   = BSWAP_INT32_UNSIGNED(AttrHeader.dwFlags);
-        ha->dwAttrFlags      = AttrHeader.dwFlags;
         if(dwBytesRead != sizeof(MPQ_ATTRIBUTES_HEADER))
             nError = ERROR_FILE_CORRUPT;
+
+        // Verify the header of the (attributes) file
+        if(nError == ERROR_SUCCESS)
+        {
+            AttrHeader.dwVersion = BSWAP_INT32_UNSIGNED(AttrHeader.dwVersion);
+            AttrHeader.dwFlags   = BSWAP_INT32_UNSIGNED(AttrHeader.dwFlags);
+            ha->dwAttrFlags      = AttrHeader.dwFlags;
+            if(dwBytesRead != sizeof(MPQ_ATTRIBUTES_HEADER))
+                nError = ERROR_FILE_CORRUPT;
+        }
 
         // Verify format of the attributes
         if(nError == ERROR_SUCCESS)
@@ -68,7 +75,7 @@ int SAttrLoadAttributes(TMPQArchive * ha)
         // Load the CRC32 (if any)
         if(nError == ERROR_SUCCESS && (AttrHeader.dwFlags & MPQ_ATTRIBUTE_CRC32))
         {
-            LPDWORD pArrayCRC32 = ALLOCMEM(DWORD, dwBlockTableSize);
+            LPDWORD pArrayCRC32 = STORM_ALLOC(DWORD, dwBlockTableSize);
 
             if(pArrayCRC32 != NULL)
             {
@@ -82,7 +89,7 @@ int SAttrLoadAttributes(TMPQArchive * ha)
                 else
                     nError = ERROR_FILE_CORRUPT;
 
-                FREEMEM(pArrayCRC32);
+                STORM_FREE(pArrayCRC32);
             }
             else
                 nError = ERROR_NOT_ENOUGH_MEMORY;
@@ -91,7 +98,7 @@ int SAttrLoadAttributes(TMPQArchive * ha)
         // Read the array of file times
         if(nError == ERROR_SUCCESS && (AttrHeader.dwFlags & MPQ_ATTRIBUTE_FILETIME))
         {
-            ULONGLONG * pArrayFileTime = ALLOCMEM(ULONGLONG, dwBlockTableSize);
+            ULONGLONG * pArrayFileTime = STORM_ALLOC(ULONGLONG, dwBlockTableSize);
 
             if(pArrayFileTime != NULL)
             {
@@ -105,7 +112,7 @@ int SAttrLoadAttributes(TMPQArchive * ha)
                 else
                     nError = ERROR_FILE_CORRUPT;
 
-                FREEMEM(pArrayFileTime);
+                STORM_FREE(pArrayFileTime);
             }
             else
                 nError = ERROR_NOT_ENOUGH_MEMORY;
@@ -115,7 +122,7 @@ int SAttrLoadAttributes(TMPQArchive * ha)
         // Note: MD5 array can be incomplete, if it's the last array in the (attributes)
         if(nError == ERROR_SUCCESS && (AttrHeader.dwFlags & MPQ_ATTRIBUTE_MD5))
         {
-            unsigned char * pArrayMD5 = ALLOCMEM(unsigned char, (dwBlockTableSize * MD5_DIGEST_SIZE));
+            unsigned char * pArrayMD5 = STORM_ALLOC(unsigned char, (dwBlockTableSize * MD5_DIGEST_SIZE));
             unsigned char * md5;
 
             if(pArrayMD5 != NULL)
@@ -134,7 +141,7 @@ int SAttrLoadAttributes(TMPQArchive * ha)
                 else
                     nError = ERROR_FILE_CORRUPT;
 
-                FREEMEM(pArrayMD5);
+                STORM_FREE(pArrayMD5);
             }
             else
                 nError = ERROR_NOT_ENOUGH_MEMORY;
@@ -228,7 +235,7 @@ int SAttrFileSaveToMpq(TMPQArchive * ha)
     // Write the array of CRC32
     if(nError == ERROR_SUCCESS && (ha->dwAttrFlags & MPQ_ATTRIBUTE_CRC32))
     {
-        LPDWORD pArrayCRC32 = ALLOCMEM(DWORD, dwFinalBlockTableSize);
+        LPDWORD pArrayCRC32 = STORM_ALLOC(DWORD, dwFinalBlockTableSize);
 
         if(pArrayCRC32 != NULL)
         {
@@ -238,14 +245,14 @@ int SAttrFileSaveToMpq(TMPQArchive * ha)
 
             dwToWrite = ha->dwFileTableSize * sizeof(DWORD);
             nError = SFileAddFile_Write(hf, pArrayCRC32, dwToWrite, MPQ_COMPRESSION_ZLIB);
-            FREEMEM(pArrayCRC32);
+            STORM_FREE(pArrayCRC32);
         }
     }
 
     // Write the array of file time
     if(nError == ERROR_SUCCESS && (ha->dwAttrFlags & MPQ_ATTRIBUTE_FILETIME))
     {
-        ULONGLONG * pArrayFileTime = ALLOCMEM(ULONGLONG, ha->dwFileTableSize);
+        ULONGLONG * pArrayFileTime = STORM_ALLOC(ULONGLONG, ha->dwFileTableSize);
 
         if(pArrayFileTime != NULL)
         {
@@ -255,14 +262,14 @@ int SAttrFileSaveToMpq(TMPQArchive * ha)
 
             dwToWrite = ha->dwFileTableSize * sizeof(ULONGLONG);
             nError = SFileAddFile_Write(hf, pArrayFileTime, dwToWrite, MPQ_COMPRESSION_ZLIB);
-            FREEMEM(pArrayFileTime);
+            STORM_FREE(pArrayFileTime);
         }
     }
 
     // Write the array of MD5s
     if(nError == ERROR_SUCCESS && (ha->dwAttrFlags & MPQ_ATTRIBUTE_MD5))
     {
-        char * pArrayMD5 = ALLOCMEM(char, ha->dwFileTableSize * MD5_DIGEST_SIZE);
+        char * pArrayMD5 = STORM_ALLOC(char, ha->dwFileTableSize * MD5_DIGEST_SIZE);
 
         if(pArrayMD5 != NULL)
         {
@@ -272,7 +279,7 @@ int SAttrFileSaveToMpq(TMPQArchive * ha)
 
             dwToWrite = ha->dwFileTableSize * MD5_DIGEST_SIZE;
             nError = SFileAddFile_Write(hf, pArrayMD5, dwToWrite, MPQ_COMPRESSION_ZLIB);
-            FREEMEM(pArrayMD5);
+            STORM_FREE(pArrayMD5);
         }
     }
 

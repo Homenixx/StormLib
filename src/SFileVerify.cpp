@@ -282,7 +282,7 @@ static bool CalculateMpqHashMd5(
     LPBYTE pbDigestBuffer = NULL;
 
     // Allocate buffer for creating the MPQ digest.
-    pbDigestBuffer = ALLOCMEM(BYTE, MPQ_DIGEST_UNIT_SIZE);
+    pbDigestBuffer = STORM_ALLOC(BYTE, MPQ_DIGEST_UNIT_SIZE);
     if(pbDigestBuffer == NULL)
         return false;
 
@@ -310,7 +310,7 @@ static bool CalculateMpqHashMd5(
         // Read the next chunk 
         if(!FileStream_Read(ha->pStream, &BeginBuffer, pbDigestBuffer, dwToRead))
         {
-            FREEMEM(pbDigestBuffer);
+            STORM_FREE(pbDigestBuffer);
             return false;
         }
 
@@ -343,7 +343,7 @@ static bool CalculateMpqHashMd5(
 
     // Finalize the MD5 hash
     md5_done(&md5_state, pMd5Digest);
-    FREEMEM(pbDigestBuffer);
+    STORM_FREE(pbDigestBuffer);
     return true;
 }
 
@@ -379,7 +379,7 @@ static bool CalculateMpqHashSha1(
     char szPlainName[MAX_PATH];
 
     // Allocate buffer for creating the MPQ digest.
-    pbDigestBuffer = ALLOCMEM(BYTE, MPQ_DIGEST_UNIT_SIZE);
+    pbDigestBuffer = STORM_ALLOC(BYTE, MPQ_DIGEST_UNIT_SIZE);
     if(pbDigestBuffer == NULL)
         return false;
 
@@ -405,7 +405,7 @@ static bool CalculateMpqHashSha1(
         // Read the next chunk 
         if(!FileStream_Read(ha->pStream, &BeginBuffer, pbDigestBuffer, dwToRead))
         {
-            FREEMEM(pbDigestBuffer);
+            STORM_FREE(pbDigestBuffer);
             return false;
         }
 
@@ -430,7 +430,7 @@ static bool CalculateMpqHashSha1(
     sha1_done(&sha1_state_temp, sha1_tail2);
 
     // Finalize the MD5 hash
-    FREEMEM(pbDigestBuffer);
+    STORM_FREE(pbDigestBuffer);
     return true;
 }
 
@@ -439,7 +439,6 @@ static int VerifyRawMpqData(
     ULONGLONG ByteOffset,
     DWORD dwDataSize)
 {
-    hash_state md5_state;
     ULONGLONG DataOffset = ha->MpqPos + ByteOffset;
     LPBYTE pbDataChunk;
     LPBYTE pbMD5Array1;                 // Calculated MD5 array
@@ -458,13 +457,13 @@ static int VerifyRawMpqData(
     dwMD5Size = dwChunkCount * MD5_DIGEST_SIZE;
 
     // Allocate space for data chunk and for the MD5 array
-    pbDataChunk = ALLOCMEM(BYTE, dwChunkSize);
+    pbDataChunk = STORM_ALLOC(BYTE, dwChunkSize);
     if(pbDataChunk == NULL)
         return ERROR_NOT_ENOUGH_MEMORY;
 
     // Allocate space for MD5 array
-    pbMD5Array1 = ALLOCMEM(BYTE, dwMD5Size);
-    pbMD5Array2 = ALLOCMEM(BYTE, dwMD5Size);
+    pbMD5Array1 = STORM_ALLOC(BYTE, dwMD5Size);
+    pbMD5Array2 = STORM_ALLOC(BYTE, dwMD5Size);
     if(pbMD5Array1 == NULL || pbMD5Array2 == NULL)
         nError = ERROR_NOT_ENOUGH_MEMORY;
 
@@ -486,9 +485,7 @@ static int VerifyRawMpqData(
             }
 
             // Calculate MD5
-            md5_init(&md5_state);
-            md5_process(&md5_state, pbDataChunk, dwBytesInChunk);
-            md5_done(&md5_state, pbMD5);
+            CalculateDataBlockHash(pbDataChunk, dwBytesInChunk, pbMD5);
 
             // Move pointers and offsets
             DataOffset += dwBytesInChunk;
@@ -515,11 +512,11 @@ static int VerifyRawMpqData(
 
     // Free memory and return result
     if(pbMD5Array2 != NULL)
-        FREEMEM(pbMD5Array2);
+        STORM_FREE(pbMD5Array2);
     if(pbMD5Array1 != NULL)
-        FREEMEM(pbMD5Array1);
+        STORM_FREE(pbMD5Array1);
     if(pbDataChunk != NULL)
-        FREEMEM(pbDataChunk);
+        STORM_FREE(pbDataChunk);
     return nError;
 }
 

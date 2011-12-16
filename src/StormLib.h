@@ -763,6 +763,7 @@ struct TMPQFile
 	DWORD        * SectorOffsets;       // Position of each file sector, relative to the begin of the file. Only for compressed files.
     DWORD        * SectorChksums;       // Array of ADLER32 values for each sector
     DWORD          dwSectorCount;       // Number of sectors in the file
+    DWORD          dwSectorOffsLen;     // Expected length of the sector offset array
     DWORD          dwPatchedFileSize;   // Size of patched file. Used when saving patch file to the MPQ
     DWORD          dwDataSize;          // Size of data in the file (on patch files, this differs from file size in block table entry)
 
@@ -795,40 +796,6 @@ typedef struct _SFILE_FIND_DATA
     LCID   lcLocale;                    // Locale version
 
 } SFILE_FIND_DATA, *PSFILE_FIND_DATA;
-
-//-----------------------------------------------------------------------------
-// Memory management
-//
-// We use our own macros for allocating/freeing memory. If you want
-// to redefine them, please keep the following rules
-//
-//  - The memory allocation must return NULL if not enough memory
-//    (i.e not to throw exception)
-//  - It is not necessary to fill the allocated buffer with zeros
-//  - Memory freeing function doesn't have to test the pointer to NULL.
-//
-
-#if defined(_MSC_VER) && defined(_DEBUG)
-__inline void * DebugMalloc(char * /* szFile */, int /* nLine */, size_t nSize)
-{
-//  return new BYTE[nSize];
-    return HeapAlloc(GetProcessHeap(), 0, nSize);
-}
-
-__inline void DebugFree(void * ptr)
-{
-//  delete [] ptr;
-    HeapFree(GetProcessHeap(), 0, ptr);
-}
-
-#define ALLOCMEM(type, nitems) (type *)DebugMalloc(__FILE__, __LINE__, (nitems) * sizeof(type))
-#define FREEMEM(ptr)           DebugFree(ptr)
-#else
-
-#define ALLOCMEM(type, nitems)   (type *)malloc((nitems) * sizeof(type))
-#define FREEMEM(ptr) free(ptr)
-
-#endif
 
 //-----------------------------------------------------------------------------
 // Stream support - functions

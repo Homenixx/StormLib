@@ -141,7 +141,7 @@ bool WINAPI SFileCreateArchive(const TCHAR * szMpqName, DWORD dwFlags, DWORD dwM
     // Create the archive handle
     if(nError == ERROR_SUCCESS)
     {
-        if((ha = ALLOCMEM(TMPQArchive, 1)) == NULL)
+        if((ha = STORM_ALLOC(TMPQArchive, 1)) == NULL)
             nError = ERROR_NOT_ENOUGH_MEMORY;
     }
 
@@ -212,7 +212,7 @@ bool WINAPI SFileCreateArchive(const TCHAR * szMpqName, DWORD dwFlags, DWORD dwM
     // Create initial file table
     if(nError == ERROR_SUCCESS)
     {
-        ha->pFileTable = ALLOCMEM(TFileEntry, ha->dwMaxFileCount);
+        ha->pFileTable = STORM_ALLOC(TFileEntry, ha->dwMaxFileCount);
         if(ha->pFileTable != NULL)
             memset(ha->pFileTable, 0x00, sizeof(TFileEntry) * ha->dwMaxFileCount);
         else
