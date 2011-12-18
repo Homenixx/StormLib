@@ -761,9 +761,8 @@ struct TMPQFile
 
     TPatchInfo   * pPatchInfo;          // Patch info block, preceding the sector table
 	DWORD        * SectorOffsets;       // Position of each file sector, relative to the begin of the file. Only for compressed files.
-    DWORD        * SectorChksums;       // Array of ADLER32 values for each sector
+    DWORD        * SectorChksums;       // Array of sector checksums (either ADLER32 or MD5) values for each file sector
     DWORD          dwSectorCount;       // Number of sectors in the file
-    DWORD          dwSectorOffsLen;     // Expected length of the sector offset array
     DWORD          dwPatchedFileSize;   // Size of patched file. Used when saving patch file to the MPQ
     DWORD          dwDataSize;          // Size of data in the file (on patch files, this differs from file size in block table entry)
 
@@ -828,7 +827,7 @@ typedef bool  (WINAPI * SFILEREADFILE)(HANDLE, void *, DWORD, LPDWORD, LPOVERLAP
 //-----------------------------------------------------------------------------
 // Functions for manipulation with StormLib global flags
 
-#define SFILE_FLAG_ALLOW_WRITE_SHARE    0x00000001  // When a MPQ is open for write by StorLib,
+#define SFILE_FLAG_ALLOW_WRITE_SHARE    0x00000001  // When a MPQ is open for write by StormLib,
                                                     // it is allowed to open it for write with another application.
 
 DWORD  WINAPI SFileGetGlobalFlags();
