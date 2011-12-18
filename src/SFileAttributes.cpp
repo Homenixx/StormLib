@@ -83,7 +83,7 @@ int SAttrLoadAttributes(TMPQArchive * ha)
                 SFileReadFile(hFile, pArrayCRC32, dwArraySize, &dwBytesRead, NULL);
                 if(dwBytesRead == dwArraySize)
                 {
-                    for(i = 0; i < dwBlockTableSize; i++)
+                     for(i = 0; i < dwBlockTableSize; i++)
                         ha->pFileTable[i].dwCrc32 = BSWAP_INT32_UNSIGNED(pArrayCRC32[i]);
                 }
                 else
