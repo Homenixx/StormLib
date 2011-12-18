@@ -277,6 +277,7 @@ bool WINAPI SFileOpenFileEx(HANDLE hMpq, const char * szFileName, DWORD dwSearch
     TFileEntry  * pFileEntry = NULL;
     TMPQFile    * hf = NULL;
     DWORD dwFileIndex = 0;
+    bool bOpenByIndex = false;
     int nError = ERROR_SUCCESS;
 
     // Don't accept NULL pointer to file handle
@@ -316,6 +317,7 @@ bool WINAPI SFileOpenFileEx(HANDLE hMpq, const char * szFileName, DWORD dwSearch
                 }
                 else
                 {
+                    bOpenByIndex = true;
                     pFileEntry = GetFileEntryByIndex(ha, dwFileIndex);
                     if(pFileEntry == NULL)
                         nError = ERROR_FILE_NOT_FOUND;
@@ -390,18 +392,19 @@ bool WINAPI SFileOpenFileEx(HANDLE hMpq, const char * szFileName, DWORD dwSearch
         if(ha->dwFlags & MPQ_FLAG_CHECK_SECTOR_CRC)
             hf->bCheckSectorCRCs = true;
 
-        // Decrypt file key. Cannot be used if the file is given by index
-        if(pFileEntry->szFileName != NULL)
+        // If we know the real file name, copy it to the file entry
+        if(bOpenByIndex == false)
         {
+            // If there is no file name yet, allocate it
+            AllocateFileName(pFileEntry, szFileName);
+
+            // If the file is encrypted, we should detect the file key
             if(pFileEntry->dwFlags & MPQ_FILE_ENCRYPTED)
             {
-                if(!IsPseudoFileName(szFileName, NULL))
-                {
-                    hf->dwFileKey = DecryptFileKey(szFileName,
-                                                   pFileEntry->ByteOffset,
-                                                   pFileEntry->dwFileSize,
-                                                   pFileEntry->dwFlags);
-                }
+                hf->dwFileKey = DecryptFileKey(szFileName,
+                                               pFileEntry->ByteOffset,
+                                               pFileEntry->dwFileSize,
+                                               pFileEntry->dwFlags);
             }
         }
         else
