@@ -2079,11 +2079,15 @@ int BuildFileTable_Classic(
                         {
                             // If the hash table entry doesn't point to the valid file item,
                             // we invalidate the entire hash table entry
-                            pHash->dwName1      = 0xFFFFFFFF;
-                            pHash->dwName2      = 0xFFFFFFFF;
-                            pHash->lcLocale     = 0xFFFF;
-                            pHash->wPlatform    = 0xFFFF;
-                            pHash->dwBlockIndex = HASH_ENTRY_DELETED;
+                            // Don't do that if we have BET table
+                            if(ha->pHetTable == NULL)
+                            {
+                                pHash->dwName1      = 0xFFFFFFFF;
+                                pHash->dwName2      = 0xFFFFFFFF;
+                                pHash->lcLocale     = 0xFFFF;
+                                pHash->wPlatform    = 0xFFFF;
+                                pHash->dwBlockIndex = HASH_ENTRY_DELETED;
+                            }
                         }
                     }
                 }
