@@ -536,6 +536,12 @@ TMPQExtTable * LoadExtTable(
     return pExtTable;
 }
 
+// Used in MPQ Editor
+void FreeExtTable(TMPQExtTable * pExtTable)
+{
+    STORM_FREE(pExtTable);
+}
+
 static int SaveMpqTable(
     TMPQArchive * ha,
     void * pMpqTable,
