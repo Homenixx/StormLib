@@ -8,6 +8,7 @@
 /* 25.03.03  1.00  Lad  The first version of StormLibTest.cpp                */
 /*****************************************************************************/
 
+#define _CRT_NON_CONFORMING_SWPRINTFS
 #define _CRT_SECURE_NO_DEPRECATE
 #define __INCLUDE_CRYPTOGRAPHY__
 #define __STORMLIB_SELF__                   // Don't use StormLib.lib
@@ -713,7 +714,7 @@ __TryAgain:
 
 static int TestArchiveOpenAndClose(const TCHAR * szMpqName)
 {
-    const char * szFileName1 = "XTEXTURES\\LavaGreen\\lavagreen.10.blp";
+    const char * szFileName1 = "(attributes)";
 //  const char * szFileName2 = "items\\map\\mapz_deleted.cel";
     TMPQArchive * ha = NULL;
     HANDLE hFile1 = NULL;
@@ -763,22 +764,28 @@ static int TestArchiveOpenAndClose(const TCHAR * szMpqName)
         SFileVerifyRawData(hMpq, SFILE_VERIFY_FILE, szFileName1);
 
         // Try to open a file
-        if(!SFileOpenFileEx(hMpq, szFileName1, SFILE_OPEN_FROM_MPQ, &hFile1))
+        if(SFileOpenFileEx(hMpq, szFileName1, SFILE_OPEN_FROM_MPQ, &hFile1))
+        {
+            DWORD dwBytesRead = 0;
+            BYTE Buffer[0x10000];
+
+            SFileGetFileSize(hFile1, NULL);
+            SFileReadFile(hFile1, Buffer, sizeof(Buffer), &dwBytesRead);
+            SFileSetFilePointer(hFile1, 0, NULL, FILE_CURRENT);
+
+            SFileSetFilePointer(hFile1, 0x5D000, NULL, FILE_BEGIN);
+            SFileReadFile(hFile1, Buffer, 0xFFFFFFFF, &dwBytesRead);
+            GetLastError();
+
+
+        }
+        else
         {
             nError = GetLastError();
             printf("%s - file not found in the MPQ\n", szFileName1);
         }
     }
 
-    // Dummy read from the file
-    if(nError == ERROR_SUCCESS)
-	{
-//      DWORD dwBytesRead = 0;
-//      BYTE Buffer[0x1000];
-
-//      SFileSetFileLocale(hFile1, 0x405);
-//      SFileReadFile(hFile1, Buffer, sizeof(Buffer), &dwBytesRead);
-	}
 /*
     // Verify the MPQ listfile
     if(nError == ERROR_SUCCESS)
@@ -1665,9 +1672,101 @@ static int TestOpenPatchedArchive(const TCHAR * szMpqName, ...)
     return nError;
 }
 
+#ifdef WIN32
+static int CreateStatisticsForMpq(FILE * fp, LPCTSTR szFileName)
+{
+    TMPQFile * hf;
+    DWORD * SectorOffsets;
+    DWORD dwExpectedSize;
+    HANDLE hMpq;
+    HANDLE hFile;
+    DWORD dwBytesRead = 0;
+    BYTE Buffer[0x08];
+
+    _tprintf(_T("%s ...\n"), szFileName);
+
+    if(SFileOpenArchive(szFileName, 0, 0, &hMpq))
+    {
+        if(SFileOpenFileEx(hMpq, ATTRIBUTES_NAME, 0, &hFile))
+        {
+            SFileReadFile(hFile, Buffer, sizeof(Buffer), &dwBytesRead, NULL);
+
+            // Get the pointer to internal structures
+            hf = (TMPQFile *)hFile;
+            SectorOffsets = (DWORD *)hf->SectorOffsets;
+            if(SectorOffsets != NULL)
+            {
+                dwExpectedSize = (hf->dwSectorCount + 1) * sizeof(DWORD);
+                if(SectorOffsets[0] > dwExpectedSize + 4)
+                {
+                    fprintf(fp, "%-80ws\t0x%08X\t0x%08X\t0x%02X\n", szFileName,
+                                                             hf->pFileEntry->dwFileSize,
+                                                             hf->pFileEntry->dwCmpSize,
+                                                             ((SectorOffsets[0] - dwExpectedSize) / 4) - 1);
+                }
+            }
+
+            SFileCloseFile(hFile);
+        }
+
+        SFileCloseArchive(hMpq);
+    }
+    return 0;
+}
+
+
+static int TestCreateMpqStatistics(FILE * fp, LPCTSTR szSearchMask)
+{
+    WIN32_FIND_DATA wf;
+    LPTSTR szFilePart;
+    LPTSTR szTemp;
+    HANDLE hFind;
+    TCHAR szSearchMask2[MAX_PATH];
+    BOOL bFound = TRUE;
+
+    // Prepare buffer for sub search mask
+    _tcscpy(szSearchMask2, szSearchMask);
+    szFilePart = _tcschr(szSearchMask2, _T('*'));
+    if(szFilePart == NULL)
+        return 0;
+
+    hFind = FindFirstFile(szSearchMask, &wf);
+    if(hFind != INVALID_HANDLE_VALUE)
+    {
+        while(bFound)
+        {
+            if(wf.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+            {
+                if(wf.cFileName[0] != _T('.'))
+                {
+                    _stprintf(szFilePart, _T("%s\\*"), wf.cFileName);
+                    TestCreateMpqStatistics(fp, szSearchMask2);
+                }
+            }
+            else
+            {
+                szTemp = _tcsrchr(wf.cFileName, _T('.'));
+                if(szTemp != NULL)
+                {
+                    if(!_tcsicmp(szTemp, _T(".mpq")))
+                    {
+                        _tcscpy(szFilePart, wf.cFileName);
+                        CreateStatisticsForMpq(fp, szSearchMask2);
+                    }
+                }
+            }
+
+            bFound = FindNextFile(hFind, &wf);
+        }
+
+        FindClose(hFind);
+    }
+    return 0;
+}
+#endif
+
 //-----------------------------------------------------------------------------
 // Main
-// 
 
 int main(void)
 {
@@ -1781,6 +1880,19 @@ int main(void)
                                         MAKE_PATH("2011 - WoW 4.x/wow-update-enGB-14333.MPQ"),
                                         MAKE_PATH("2011 - WoW 4.x/wow-update-enGB-14480.MPQ"),
                                         NULL);
+    }
+*/
+/*
+    if(nError == ERROR_SUCCESS)
+    {
+        FILE * fp = _tfopen(_T("E:\\MpqStats.txt"), _T("wt"));
+
+        if(fp != NULL)
+        {
+            TestCreateMpqStatistics(fp, _T("E:\\Hry\\*"));
+            TestCreateMpqStatistics(fp, _T("E:\\Multimedia\\MPQs\\*"));
+            fclose(fp);
+        }
     }
 */
     // Remove the working directory
