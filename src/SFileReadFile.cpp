@@ -161,16 +161,15 @@ static int ReadMpqSectors(TMPQFile * hf, LPBYTE pbBuffer, DWORD dwByteOffset, DW
         // If the sector checksums are not loaded yet, load them now.
         if(hf->SectorChksums == NULL && (pFileEntry->dwFlags & MPQ_FILE_SECTOR_CRC) && hf->bLoadedSectorCRCs == false)
         {
+            //
             // Sector CRCs is plain crap feature. It is almost never present,
             // often it's empty, or the end offset of sector CRCs is zero.
             // We only try to load sector CRCs once, and regardless if it fails
             // or not, we won't try that again for the given file.
-            hf->bLoadedSectorCRCs = true;
+            //
 
-            // Load the sector CRCs.
-            nError = AllocateSectorChecksums(hf, true);
-            if(nError != ERROR_SUCCESS)
-                return nError;
+            AllocateSectorChecksums(hf, true);
+            hf->bLoadedSectorCRCs = true;
         }
 
         // TODO: If the raw data MD5s are not loaded yet, load them now
@@ -997,14 +996,6 @@ bool WINAPI SFileGetFileName(HANDLE hFile, char * szFileName)
         break;                              \
     }
 
-#define RESULT_IS_64BIT_VALUE(val)          \
-    cbLengthNeeded = sizeof(ULONGLONG);     \
-    ResultValue = val;
-
-#define RESULT_IS_32BIT_VALUE(val)          \
-    cbLengthNeeded = sizeof(DWORD);         \
-    ResultValue = val;
-
 bool WINAPI SFileGetFileInfo(
     HANDLE hMpqOrFile,
     DWORD dwInfoType,
@@ -1013,12 +1004,13 @@ bool WINAPI SFileGetFileInfo(
     LPDWORD pcbLengthNeeded)
 {
     TMPQArchive * ha = (TMPQArchive *)hMpqOrFile;
-    ULONGLONG ResultValue = 0;
     TMPQBlock * pBlock;
     TMPQFile * hf = (TMPQFile *)hMpqOrFile;
+    void * pvSrcFileInfo = NULL;
     DWORD cbLengthNeeded = 0;
     DWORD dwIsReadOnly;
     DWORD dwFileCount = 0;
+    DWORD dwFileIndex;
     DWORD dwFileKey;
     DWORD i;
     int nError = ERROR_SUCCESS;
@@ -1027,49 +1019,46 @@ bool WINAPI SFileGetFileInfo(
     {
         case SFILE_INFO_ARCHIVE_NAME:
             VERIFY_MPQ_HANDLE(ha);
-            cbLengthNeeded = (DWORD)_tcslen(ha->pStream->szFileName) + 1;
-            if(cbFileInfo < cbLengthNeeded)
-            {
-                nError = ERROR_INSUFFICIENT_BUFFER;
-                break;
-            }
-            _tcscpy((TCHAR *)pvFileInfo, ha->pStream->szFileName);
+            
+            // pvFileInfo receives the name of the archive, terminated by 0
+            cbLengthNeeded = (DWORD)(_tcslen(ha->pStream->szFileName) + 1) * sizeof(TCHAR);
+            pvSrcFileInfo = ha->pStream->szFileName;
             break;
 
         case SFILE_INFO_ARCHIVE_SIZE:       // Size of the archive
             VERIFY_MPQ_HANDLE(ha);
-            RESULT_IS_32BIT_VALUE(ha->pHeader->dwArchiveSize);
+            cbLengthNeeded = sizeof(DWORD);
+            pvSrcFileInfo = &ha->pHeader->dwArchiveSize;
             break;
 
         case SFILE_INFO_MAX_FILE_COUNT:     // Max. number of files in the MPQ
             VERIFY_MPQ_HANDLE(ha);
-            RESULT_IS_32BIT_VALUE(ha->dwMaxFileCount);
+            cbLengthNeeded = sizeof(DWORD);
+            pvSrcFileInfo = &ha->dwMaxFileCount;
             break;
 
         case SFILE_INFO_HASH_TABLE_SIZE:    // Size of the hash table
             VERIFY_MPQ_HANDLE(ha);
-            RESULT_IS_32BIT_VALUE(ha->pHeader->dwHashTableSize);
+            cbLengthNeeded = sizeof(DWORD);
+            pvSrcFileInfo = &ha->pHeader->dwHashTableSize;
             break;
 
         case SFILE_INFO_BLOCK_TABLE_SIZE:   // Size of the block table
             VERIFY_MPQ_HANDLE(ha);
-            RESULT_IS_32BIT_VALUE(ha->pHeader->dwBlockTableSize);
+            cbLengthNeeded = sizeof(DWORD);
+            pvSrcFileInfo = &ha->pHeader->dwBlockTableSize;
             break;
 
         case SFILE_INFO_SECTOR_SIZE:
             VERIFY_MPQ_HANDLE(ha);
-            RESULT_IS_32BIT_VALUE(ha->dwSectorSize);
+            cbLengthNeeded = sizeof(DWORD);
+            pvSrcFileInfo = &ha->dwSectorSize;
             break;
 
         case SFILE_INFO_HASH_TABLE:
             VERIFY_MPQ_HANDLE(ha);
             cbLengthNeeded = ha->pHeader->dwHashTableSize * sizeof(TMPQHash);
-            if(cbFileInfo < cbLengthNeeded)
-            {
-                nError = ERROR_INSUFFICIENT_BUFFER;
-                break;
-            }
-            memcpy(pvFileInfo, ha->pHashTable, cbLengthNeeded);
+            pvSrcFileInfo = ha->pHashTable;
             break;
 
         case SFILE_INFO_BLOCK_TABLE:
@@ -1096,75 +1085,85 @@ bool WINAPI SFileGetFileInfo(
         case SFILE_INFO_NUM_FILES:
             VERIFY_MPQ_HANDLE(ha);
             dwFileCount = GetMpqFileCount(ha);
-            RESULT_IS_32BIT_VALUE(dwFileCount);
+            cbLengthNeeded = sizeof(DWORD);
+            pvSrcFileInfo = &dwFileCount;
             break;
 
         case SFILE_INFO_STREAM_FLAGS:   // Stream flags for the MPQ. See STREAM_FLAG_XXX
             VERIFY_MPQ_HANDLE(ha);
-            RESULT_IS_32BIT_VALUE(ha->pStream->StreamFlags);
+            cbLengthNeeded = sizeof(DWORD);
+            pvSrcFileInfo = &ha->pStream->StreamFlags;
             break;
 
         case SFILE_INFO_IS_READ_ONLY:
             VERIFY_MPQ_HANDLE(ha);
-
             dwIsReadOnly = ((ha->pStream->StreamFlags & STREAM_FLAG_READ_ONLY) || (ha->dwFlags & MPQ_FLAG_READ_ONLY));
-            RESULT_IS_32BIT_VALUE(dwIsReadOnly);
+            cbLengthNeeded = sizeof(DWORD);
+            pvSrcFileInfo = &dwIsReadOnly;
             break;
 
         case SFILE_INFO_HASH_INDEX:
             VERIFY_FILE_HANDLE(hf);
-            RESULT_IS_32BIT_VALUE(hf->pFileEntry->dwHashIndex);
+            cbLengthNeeded = sizeof(DWORD);
+            pvSrcFileInfo = &hf->pFileEntry->dwHashIndex;
             break;
 
         case SFILE_INFO_CODENAME1:
             VERIFY_FILE_HANDLE(hf);
+            cbLengthNeeded = sizeof(DWORD);
+            pvSrcFileInfo = &hf->pFileEntry->dwHashIndex;
             if(ha->pHashTable != NULL)
-            {
-                RESULT_IS_32BIT_VALUE(ha->pHashTable[hf->pFileEntry->dwHashIndex].dwName1);
-            }
+                pvSrcFileInfo = &ha->pHashTable[hf->pFileEntry->dwHashIndex].dwName1;
             break;
 
         case SFILE_INFO_CODENAME2:
             VERIFY_FILE_HANDLE(hf);
+            cbLengthNeeded = sizeof(DWORD);
             if(ha->pHashTable != NULL)
-            {
-                RESULT_IS_32BIT_VALUE(ha->pHashTable[hf->pFileEntry->dwHashIndex].dwName2);
-            }
+                pvSrcFileInfo = &ha->pHashTable[hf->pFileEntry->dwHashIndex].dwName2;
             break;
 
         case SFILE_INFO_LOCALEID:
             VERIFY_FILE_HANDLE(hf);
-            RESULT_IS_32BIT_VALUE(hf->pFileEntry->lcLocale);
+            cbLengthNeeded = sizeof(DWORD);
+            pvSrcFileInfo = &hf->pFileEntry->lcLocale;
             break;
 
         case SFILE_INFO_BLOCKINDEX:
             VERIFY_FILE_HANDLE(hf);
-            RESULT_IS_32BIT_VALUE((DWORD)(hf->pFileEntry - hf->ha->pFileTable));
+            dwFileIndex = (DWORD)(hf->pFileEntry - hf->ha->pFileTable);
+            cbLengthNeeded = sizeof(DWORD);
+            pvSrcFileInfo = &dwFileIndex;
             break;
 
         case SFILE_INFO_FILE_SIZE:
             VERIFY_FILE_HANDLE(hf);
-            RESULT_IS_32BIT_VALUE(hf->pFileEntry->dwFileSize);
+            cbLengthNeeded = sizeof(DWORD);
+            pvSrcFileInfo = &hf->pFileEntry->dwFileSize;
             break;
 
         case SFILE_INFO_COMPRESSED_SIZE:
             VERIFY_FILE_HANDLE(hf);
-            RESULT_IS_32BIT_VALUE(hf->pFileEntry->dwCmpSize);
+            cbLengthNeeded = sizeof(DWORD);
+            pvSrcFileInfo = &hf->pFileEntry->dwCmpSize;
             break;
 
         case SFILE_INFO_FLAGS:
             VERIFY_FILE_HANDLE(hf);
-            RESULT_IS_32BIT_VALUE(hf->pFileEntry->dwFlags);
+            cbLengthNeeded = sizeof(DWORD);
+            pvSrcFileInfo = &hf->pFileEntry->dwFlags;
             break;
 
         case SFILE_INFO_POSITION:
             VERIFY_FILE_HANDLE(hf);
-            RESULT_IS_32BIT_VALUE((DWORD)hf->pFileEntry->ByteOffset);
+            cbLengthNeeded = sizeof(ULONGLONG);
+            pvSrcFileInfo = &hf->pFileEntry->ByteOffset;
             break;
 
         case SFILE_INFO_KEY:
             VERIFY_FILE_HANDLE(hf);
-            RESULT_IS_32BIT_VALUE(hf->dwFileKey);
+            cbLengthNeeded = sizeof(DWORD);
+            pvSrcFileInfo = &hf->dwFileKey;
             break;
 
         case SFILE_INFO_KEY_UNFIXED:
@@ -1172,12 +1171,14 @@ bool WINAPI SFileGetFileInfo(
             dwFileKey = hf->dwFileKey;
             if(hf->pFileEntry->dwFlags & MPQ_FILE_FIX_KEY)
                 dwFileKey = (dwFileKey ^ hf->pFileEntry->dwFileSize) - (DWORD)hf->MpqFilePos;
-            RESULT_IS_32BIT_VALUE(dwFileKey);
+            cbLengthNeeded = sizeof(DWORD);
+            pvSrcFileInfo = &dwFileKey;
             break;
 
         case SFILE_INFO_FILETIME:
             VERIFY_FILE_HANDLE(hf);
-            RESULT_IS_64BIT_VALUE(hf->pFileEntry->FileTime);
+            cbLengthNeeded = sizeof(ULONGLONG);
+            pvSrcFileInfo = &hf->pFileEntry->FileTime;
             break;
 
         case SFILE_INFO_PATCH_CHAIN:
@@ -1190,19 +1191,25 @@ bool WINAPI SFileGetFileInfo(
             break;
     }
 
-    // Check the size
-    if(cbLengthNeeded > cbFileInfo)
-        nError = ERROR_INSUFFICIENT_BUFFER;
+    // If everything is OK so far, copy the information
+    if(nError == ERROR_SUCCESS)
+    {
+        // Is the output buffer large enough?
+        if(cbFileInfo >= cbLengthNeeded)
+        {
+            // Copy the data
+            if(pvSrcFileInfo != NULL)
+                memcpy(pvFileInfo, pvSrcFileInfo, cbLengthNeeded);
+        }
+        else
+        {
+            nError = ERROR_INSUFFICIENT_BUFFER;
+        }
 
-    // Give the size to the caller
-    if(pcbLengthNeeded != NULL)
-        *pcbLengthNeeded = cbLengthNeeded;
-
-    // Give the result to the caller
-    if(cbLengthNeeded == 8)
-        *(ULONGLONG *)pvFileInfo = ResultValue;
-    if(cbLengthNeeded == 4)
-        *(DWORD *)pvFileInfo = (DWORD)ResultValue;
+        // Give the size to the caller
+        if(pcbLengthNeeded != NULL)
+            *pcbLengthNeeded = cbLengthNeeded;
+    }
 
     // Set the last error value, if needed
     if(nError != ERROR_SUCCESS)
