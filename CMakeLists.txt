@@ -285,6 +285,11 @@ if(UNIX)
     set_target_properties(storm PROPERTIES SOVERSION 0)
 endif()
 
+# On Win32, build StormLib.dll since we don't want to clash with Storm.dll
+if(WIN32)
+    set_target_properties(storm PROPERTIES OUTPUT_NAME StormLib)
+endif()
+
 install(TARGETS storm RUNTIME DESTINATION bin LIBRARY DESTINATION lib ARCHIVE DESTINATION lib)
 install(FILES src/storm.h src/StormPort.h DESTINATION include)
 
