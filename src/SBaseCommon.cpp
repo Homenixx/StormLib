@@ -269,7 +269,7 @@ int ConvertMpqHeaderToFormat4(
             }
 
             // Compressed size of hash and block table
-            if(wFormatVersion >= MPQ_FORMAT_VERSION_3)
+            if(wFormatVersion >= MPQ_FORMAT_VERSION_2)
             {
                 // Compressed size of the hash table
                 pHeader->HashTableSize64 = MAKE_OFFSET64(pHeader->wBlockTablePosHi, pHeader->dwBlockTablePos) - MAKE_OFFSET64(pHeader->wHashTablePosHi, pHeader->dwHashTablePos);
@@ -739,7 +739,6 @@ int LoadMpqTable(
     DWORD dwRealSize,
     DWORD dwKey)
 {
-    ULONGLONG ByteOffsetLi;
     LPBYTE pbCompressed = NULL;
     LPBYTE pbToRead = (LPBYTE)pvTable;
     int nError = ERROR_SUCCESS;
@@ -758,8 +757,7 @@ int LoadMpqTable(
     }
 
     // Read the table
-    ByteOffsetLi = ByteOffset;
-    if(FileStream_Read(ha->pStream, &ByteOffsetLi, pbToRead, dwCompressedSize))
+    if(FileStream_Read(ha->pStream, &ByteOffset, pbToRead, dwCompressedSize))
     {
         // First of all, decrypt the table
         if(dwKey != 0)
@@ -933,6 +931,7 @@ int AllocateSectorOffsets(TMPQFile * hf, bool bLoadFromFile)
     TMPQArchive * ha = hf->ha;
     TFileEntry * pFileEntry = hf->pFileEntry;
     DWORD dwSectorOffsLen;
+    bool bSectorOffsetTableCorrupt = false;
 
     // Caller of AllocateSectorOffsets must ensure these
     assert(hf->SectorOffsets == NULL);
@@ -948,19 +947,16 @@ int AllocateSectorOffsets(TMPQFile * hf, bool bLoadFromFile)
     }
 
     // Calculate the number of data sectors
-    hf->dwSectorCount = (hf->dwDataSize / hf->dwSectorSize);
-    if(hf->dwDataSize % hf->dwSectorSize)
-        hf->dwSectorCount++;
+    hf->dwSectorCount = ((hf->dwDataSize - 1) / hf->dwSectorSize) + 1;
 
     // Calculate the number of file sectors
-    dwSectorOffsLen = hf->dwSectorCount * sizeof(DWORD);
+    dwSectorOffsLen = (hf->dwSectorCount + 1) * sizeof(DWORD);
+    
+    // If MPQ_FILE_SECTOR_CRC flag is set, there will either be extra DWORD
+    // or an array of MD5's. Either way, we read at least 4 bytes more
+    // in order to save additional read from the file.
     if(pFileEntry->dwFlags & MPQ_FILE_SECTOR_CRC)
         dwSectorOffsLen += sizeof(DWORD);
-    dwSectorOffsLen += sizeof(DWORD);
-    
-    // Save the expected length of the sector offset table
-    // Note: Several files have the sector offset table longer than expected
-    hf->dwSectorOffsLen = dwSectorOffsLen;
 
     // Only allocate and load the table if the file is compressed
     if(pFileEntry->dwFlags & MPQ_FILE_COMPRESSED)
@@ -1012,15 +1008,10 @@ int AllocateSectorOffsets(TMPQFile * hf, bool bLoadFromFile)
             }
 
             //
-            // I've seen MPQs that had MPQ_FILE_SECTOR_CRC flag absent,
-            // but there was one extra entry in the sector offset table
-            // (Example: expansion-locale-frFR.MPQ from WoW Cataclysm BETA)
-            // We detect such behavior here by verifying the value
-            // of the first entry in the sector offset table
+            // There may be various extra bytes loaded after the sector offset table.
+            // They can either contain offset to the sector checksums, or MD5s,
+            // or random data
             // 
-            // Also, the (attributes) file from patch MPQs from WoW tends
-            // to have two MD5 checksums after the end of the sector table
-            //
 
             if(hf->SectorOffsets[0] > dwSectorOffsLen)
             {
@@ -1036,12 +1027,29 @@ int AllocateSectorOffsets(TMPQFile * hf, bool bLoadFromFile)
             }
 
             //
-            // Check if the sector positions are correct.
+            // Validate the sector offset table
             // I saw a protector who puts negative offset into the sector offset table.
             // Because there are always at least 2 sector offsets, we can check their difference
             //
 
-            if((hf->SectorOffsets[1] - hf->SectorOffsets[0]) > ha->dwSectorSize)
+            for(DWORD i = 0; i < hf->dwSectorCount; i++)
+            {
+                // Every following sector offset must be bigger than the previous one
+                if(hf->SectorOffsets[i+1] <= hf->SectorOffsets[i])
+                {
+                    bSectorOffsetTableCorrupt = true;
+                    break;
+                }
+
+                if(hf->SectorOffsets[i] > pFileEntry->dwCmpSize)
+                {
+                    bSectorOffsetTableCorrupt = true;
+                    break;
+                }
+            }
+
+            // If data corruption detected, free the sector offset table
+            if(bSectorOffsetTableCorrupt)
             {
                 STORM_FREE(hf->SectorOffsets);
                 hf->SectorOffsets = NULL;
@@ -1064,8 +1072,8 @@ int AllocateSectorChecksums(TMPQFile * hf, bool bLoadFromFile)
     TFileEntry * pFileEntry = hf->pFileEntry;
     ULONGLONG RawFilePos;
     DWORD dwCompressedSize = 0;
+    DWORD dwExpectedSize;
     DWORD dwCrcOffset;                      // Offset of the CRC table, relative to file offset in the MPQ
-    DWORD dwLastIndex;
     DWORD dwCrcSize;
 
     // Caller of AllocateSectorChecksums must ensure these
@@ -1081,52 +1089,53 @@ int AllocateSectorChecksums(TMPQFile * hf, bool bLoadFromFile)
     // Caller must ensure that we are only called when we have sector checksums
     assert(pFileEntry->dwFlags & MPQ_FILE_SECTOR_CRC);
 
-    // If we only have to allocate the buffer, do it
-    if(bLoadFromFile == false)
+    // 
+    // Older MPQs store an array of CRC32's after
+    // the raw file data in the MPQ.
+    //
+    // In newer MPQs, the (since Cataclysm BETA) the (attributes) file
+    // contains additional 32-bit values beyond the sector table.
+    // Their number depends on size of the (attributes), but their
+    // meaning is unknown. They are usually zeroed in retail game files,
+    // but contain some sort of checksum in BETA MPQs
+    //
+
+    // Does the size of the file table match with the CRC32-based checksums?
+    dwExpectedSize = (hf->dwSectorCount + 2) * sizeof(DWORD);
+    if(hf->SectorOffsets[0] == dwExpectedSize)
     {
-        // Allocate buffer for sector checksums
+        // Is there valid size of the sector checksums?
+        if(hf->SectorOffsets[hf->dwSectorCount + 1] >= hf->SectorOffsets[hf->dwSectorCount])
+            dwCompressedSize = hf->SectorOffsets[hf->dwSectorCount + 1] - hf->SectorOffsets[hf->dwSectorCount];
+
+        // Ignore cases when the length is too small or too big.
+        if(dwCompressedSize < sizeof(DWORD) || dwCompressedSize > hf->dwSectorSize)
+            return ERROR_SUCCESS;
+
+        // Allocate the array for the sector checksums
         hf->SectorChksums = STORM_ALLOC(DWORD, hf->dwSectorCount);
         if(hf->SectorChksums == NULL)
             return ERROR_NOT_ENOUGH_MEMORY;
 
-        memset(hf->SectorChksums, 0, hf->dwSectorCount * sizeof(DWORD));
-        return ERROR_SUCCESS;
+        // If we are not supposed to load it from the file, allocate empty buffer
+        if(bLoadFromFile == false)
+        {
+            memset(hf->SectorChksums, 0, hf->dwSectorCount * sizeof(DWORD));
+            return ERROR_SUCCESS;
+        }
+
+        // Calculate offset of the CRC table
+        dwCrcSize = hf->dwSectorCount * sizeof(DWORD);
+        dwCrcOffset = hf->SectorOffsets[hf->dwSectorCount];
+        CalculateRawSectorOffset(RawFilePos, hf, dwCrcOffset); 
+
+        // Now read the table from the MPQ
+        return LoadMpqTable(ha, RawFilePos, hf->SectorChksums, dwCompressedSize, dwCrcSize, 0);
     }
 
-    //
-    // Note: I've seen files that had sector offset table with
-    // the size of 0x20 bytes, but they supposed to be only 0x08
-    // (dwDataSize = 0x000059ea, dwSectorSize = 0x00004000)
-    // Probable cause: This is a file that is to be downloaded
-    // from the server as soon as it's accessed by the game.
-    //
-
-    // If the real length of the sector offset table doesn't meet
-    // the expected value, we won't load sector checksums
-    if(hf->SectorOffsets[0] != hf->dwSectorOffsLen)
-        return ERROR_SUCCESS;
-
-    // Is there valid size of the sector checksums?
-    dwLastIndex = (hf->dwSectorOffsLen / sizeof(DWORD)) - 2;
-    if(hf->SectorOffsets[dwLastIndex + 1] >= hf->SectorOffsets[dwLastIndex])
-        dwCompressedSize = hf->SectorOffsets[dwLastIndex + 1] - hf->SectorOffsets[dwLastIndex];
-
-    // Check size of the checksums. If zero, there aren't any
-    if(dwCompressedSize == 0)
-        return ERROR_SUCCESS;
-
-    // Allocate buffer for sector CRCs
-    hf->SectorChksums = STORM_ALLOC(DWORD, hf->dwSectorCount);
-    if(hf->SectorChksums == NULL)
-        return ERROR_NOT_ENOUGH_MEMORY;
-
-    // Calculate offset of the CRC table
-    dwCrcSize = hf->dwSectorCount * sizeof(DWORD);
-    dwCrcOffset = hf->SectorOffsets[hf->dwSectorCount];
-    CalculateRawSectorOffset(RawFilePos, hf, dwCrcOffset); 
-
-    // Now read the table from the MPQ
-    return LoadMpqTable(ha, RawFilePos, hf->SectorChksums, dwCompressedSize, dwCrcSize, 0);
+    // If the size doesn't match, we ignore sector checksums
+//  assert(false);
+    return ERROR_SUCCESS;
 }
 
 int WritePatchInfo(TMPQFile * hf)
