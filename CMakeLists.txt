@@ -277,7 +277,7 @@ endif()
 
 if(APPLE)
     set_target_properties(storm PROPERTIES FRAMEWORK true)
-    set_target_properties(storm PROPERTIES PUBLIC_HEADER "src/storm.h src/StormPort.h")
+    set_target_properties(storm PROPERTIES PUBLIC_HEADER "src/StormLib.h src/StormPort.h")
     set_target_properties(storm PROPERTIES LINK_FLAGS "-framework Carbon")
 endif()
 
@@ -291,5 +291,5 @@ if(WIN32)
 endif()
 
 install(TARGETS storm RUNTIME DESTINATION bin LIBRARY DESTINATION lib ARCHIVE DESTINATION lib)
-install(FILES src/storm.h src/StormPort.h DESTINATION include)
+install(FILES src/StormLib.h src/StormPort.h DESTINATION include)
 
