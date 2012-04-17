@@ -15,7 +15,7 @@
 #include "StormLib.h"
 #include "StormCommon.h"
 
-char StormLibCopyright[] = "StormLib v " STORMLIB_VERSION_STRING " Copyright Ladislav Zezula 1998-2011";
+char StormLibCopyright[] = "StormLib v " STORMLIB_VERSION_STRING " Copyright Ladislav Zezula 1998-2012";
 
 //-----------------------------------------------------------------------------
 // The buffer for decryption engine.
@@ -961,8 +961,6 @@ int AllocateSectorOffsets(TMPQFile * hf, bool bLoadFromFile)
     // Only allocate and load the table if the file is compressed
     if(pFileEntry->dwFlags & MPQ_FILE_COMPRESSED)
     {
-        __LoadSectorOffsets:
-
         // Allocate the sector offset table
         hf->SectorOffsets = (DWORD *)STORM_ALLOC(BYTE, dwSectorOffsLen);
         if(hf->SectorOffsets == NULL)
@@ -1008,40 +1006,26 @@ int AllocateSectorOffsets(TMPQFile * hf, bool bLoadFromFile)
             }
 
             //
-            // There may be various extra bytes loaded after the sector offset table.
-            // They can either contain offset to the sector checksums, or MD5s,
-            // or random data
-            // 
-
-            if(hf->SectorOffsets[0] > dwSectorOffsLen)
-            {
-                // Get the real size of the sector offset table
-                dwSectorOffsLen = hf->SectorOffsets[0];
-
-                // Free the current sector offset table
-                STORM_FREE(hf->SectorOffsets);
-                hf->SectorOffsets = NULL;
-
-                // Increment number of data sectors by 1 and retry
-                goto __LoadSectorOffsets;
-            }
-
-            //
             // Validate the sector offset table
-            // I saw a protector who puts negative offset into the sector offset table.
-            // Because there are always at least 2 sector offsets, we can check their difference
+            //
+            // Note: Some MPQ protectors put the actual file data before the sector offset table.
+            // In this case, the sector offsets are negative (> 0x80000000).
             //
 
             for(DWORD i = 0; i < hf->dwSectorCount; i++)
             {
+                DWORD dwSectorOffset1 = hf->SectorOffsets[i+1];
+                DWORD dwSectorOffset0 = hf->SectorOffsets[i];
+
                 // Every following sector offset must be bigger than the previous one
-                if(hf->SectorOffsets[i+1] <= hf->SectorOffsets[i])
+                if(dwSectorOffset1 <= dwSectorOffset0)
                 {
                     bSectorOffsetTableCorrupt = true;
                     break;
                 }
 
-                if(hf->SectorOffsets[i] > pFileEntry->dwCmpSize)
+                // The sector size must not be bigger than compressed file size
+                if((dwSectorOffset1 - dwSectorOffset0) > pFileEntry->dwCmpSize)
                 {
                     bSectorOffsetTableCorrupt = true;
                     break;
@@ -1055,6 +1039,15 @@ int AllocateSectorOffsets(TMPQFile * hf, bool bLoadFromFile)
                 hf->SectorOffsets = NULL;
                 return ERROR_FILE_CORRUPT;
             }
+
+            //
+            // There may be various extra DWORDs loaded after the sector offset table.
+            // They are mostly empty on WoW release MPQs, but on MPQs from PTR,
+            // they contain random non-zero data. Their meaning is unknown.
+            // At this point, we completely ignore them
+            // 
+
+//          assert(dwSectorOffsLen == hf->SectorOffsets[0]);
         }
         else
         {

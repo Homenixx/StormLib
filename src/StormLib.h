@@ -76,6 +76,10 @@
 
 #include "StormPort.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 //-----------------------------------------------------------------------------
 // Use the apropriate library
 //
@@ -261,6 +265,7 @@
 #define LISTFILE_NAME          "(listfile)" // Name of internal listfile
 #define SIGNATURE_NAME        "(signature)" // Name of internal signature
 #define ATTRIBUTES_NAME      "(attributes)" // Name of internal attributes file
+#define PATCH_METADATA_NAME "(patch_metadata)"
 
 #define STORMLIB_VERSION             0x0804 // Current version of StormLib (8.04)
 #define STORMLIB_VERSION_STRING      "8.04"
@@ -943,6 +948,16 @@ int    WINAPI SCompCompress   (char * pbOutBuffer, int * pcbOutBuffer, char * pb
 int    WINAPI SCompDecompress (char * pbOutBuffer, int * pcbOutBuffer, char * pbInBuffer, int cbInBuffer);
 
 //-----------------------------------------------------------------------------
+// Non-Windows support for SetLastError/GetLastError
+
+#ifndef PLATFORM_WINDOWS
+
+void  SetLastError(int err);
+int   GetLastError();
+
+#endif
+
+//-----------------------------------------------------------------------------
 // Functions from Storm.dll. They use slightly different names for keeping
 // possibility to use them together with StormLib (StormXXX instead of SFileXXX)
 
@@ -950,5 +965,9 @@ int    WINAPI SCompDecompress (char * pbOutBuffer, int * pcbOutBuffer, char * pb
   #define STORM_ALTERNATE_NAMES         // Force storm_dll.h to use alternate fnc names
   #include "..\storm_dll\storm_dll.h"
 #endif // __LINK_STORM_DLL__
+
+#ifdef __cplusplus
+}   // extern "C"
+#endif
 
 #endif  // __STORMLIB_H__

@@ -876,33 +876,42 @@ static bool PartFile_SetSize(
     return false;
 }
 
-/*
- * Stream functions - encrypted stream
- *
- * Note: In original Starcraft II Installer.exe:                       Suffix derived from battle.net auth. code
- * Address of decryption routine: 0053A3D0                             http://us.battle.net/static/mediakey/sc2-authenticationcode-enUS.txt
- * Pointer to decryptor object: ECX                                    Numbers mean offset of 4-char group of auth code
- * Pointer to key: ECX+0x5C                                            -0C-    -1C--08-    -18--04-    -14--00-    -10-
- */
-static const char * MpqeKey_Starcraft2_Install_enUS = "expand 32-byte kTFD80000ETR5VM5G0000K859RE5N0000WT6F3DH500005LXG";
-static const char * MpqeKey_Starcraft2_Install_enGB = "expand 32-byte kANGY000029ZH6NA20000HRGF8UDG0000NY82G8MN00006A3D";
-static const char * MpqeKey_Starcraft2_Install_deDE = "expand 32-byte kSSXH00004XFXK4KX00008EKJD3CA0000Y64ZY45M0000YD9V";
-static const char * MpqeKey_Starcraft2_Install_esES = "expand 32-byte kQU4Y0000XKTQ94PF0000N4R4UAXE0000AZ248WLK0000249P";
-static const char * MpqeKey_Starcraft2_Install_frFR = "expand 32-byte kFWPQ00006EAJ8HJE0000PFER9K9300008MA2ZG7J0000UA76";
-static const char * MpqeKey_Starcraft2_Install_itIT = "expand 32-byte kXV7E00008BL2TVAP0000GVMWUNNN0000SVBWNE7C00003G2B";
-static const char * MpqeKey_Starcraft2_Install_plPL = "expand 32-byte k83U6000048L6LULJ00004MQDB8ME0000UP6K2NSF0000YHA3";
-static const char * MpqeKey_Starcraft2_Install_ruRU = "expand 32-byte k9SH70000YEGT4BAT0000QDK978W60000V9NLVHB30000D68V";
+//
+// Stream functions - encrypted stream
+//
+// Note: In original Starcraft II Installer.exe:                       Suffix derived from battle.net auth. code
+// Address of decryption routine: 0053A3D0                             http://us.battle.net/static/mediakey/sc2-authenticationcode-enUS.txt
+// Pointer to decryptor object: ECX                                    Numbers mean offset of 4-char group of auth code (follows in comment)
+// Pointer to key: ECX+0x5C                                            -0C-    -1C--08-    -18--04-    -14--00-    -10-
+static const char * MpqeKey_Starcraft2_Install_enUS = "expand 32-byte kTFD80000ETR5VM5G0000K859RE5N0000WT6F3DH500005LXG";   // 3DH5RE5NVM5GTFD85LXGWT6FK859ETR5
+static const char * MpqeKey_Starcraft2_Install_enGB = "expand 32-byte kANGY000029ZH6NA20000HRGF8UDG0000NY82G8MN00006A3D";   // G8MN8UDG6NA2ANGY6A3DNY82HRGF29ZH
+static const char * MpqeKey_Starcraft2_Install_enSG = "expand 32-byte kWW5B0000F7HWFDU90000FWZSHLB20000BLRSW9RR00003ECE";   // W9RRHLB2FDU9WW5B3ECEBLRSFWZSF7HW
+static const char * MpqeKey_Starcraft2_Install_deDE = "expand 32-byte kSSXH00004XFXK4KX00008EKJD3CA0000Y64ZY45M0000YD9V";   // Y45MD3CAK4KXSSXHYD9VY64Z8EKJ4XFX
+static const char * MpqeKey_Starcraft2_Install_esES = "expand 32-byte kQU4Y0000XKTQ94PF0000N4R4UAXE0000AZ248WLK0000249P";   // 8WLKUAXE94PFQU4Y249PAZ24N4R4XKTQ
+static const char * MpqeKey_Starcraft2_Install_esMX = "expand 32-byte kSQBR00004G54HGGX0000MF9GXX3V0000FFDXA34D0000FE5U";   // A34DXX3VHGGXSQBRFE5UFFDXMF9G4G54
+static const char * MpqeKey_Starcraft2_Install_frFR = "expand 32-byte kFWPQ00006EAJ8HJE0000PFER9K9300008MA2ZG7J0000UA76";   // ZG7J9K938HJEFWPQUA768MA2PFER6EAJ
+static const char * MpqeKey_Starcraft2_Install_itIT = "expand 32-byte kXV7E00008BL2TVAP0000GVMWUNNN0000SVBWNE7C00003G2B";   // NE7CUNNNTVAPXV7E3G2BSVBWGVMW8BL2
+static const char * MpqeKey_Starcraft2_Install_plPL = "expand 32-byte k83U6000048L6LULJ00004MQDB8ME0000UP6K2NSF0000YHA3";   // 2NSFB8MELULJ83U6YHA3UP6K4MQD48L6
+static const char * MpqeKey_Starcraft2_Install_ruRU = "expand 32-byte k9SH70000YEGT4BAT0000QDK978W60000V9NLVHB30000D68V";   // VHB378W64BAT9SH7D68VV9NLQDK9YEGT
+static const char * MpqeKey_Starcraft2_Install_zhTW = "expand 32-byte k7KBN0000D9NEM6GC0000N3PLQJV400003BRDU3NF00009XQJ";   // U3NFQJV4M6GC7KBN9XQJ3BRDN3PLD9NE
+static const char * MpqeKey_Starcraft2_Install_ptBR = "expand 32-byte kU8BM0000SW4EZ4CU00005F9CZ9EW0000CTY6QA2T0000B5WX";   // QA2TZ9EWZ4CUU8BMB5WXCTY65F9CSW4E
+static const char * MpqeKey_Starcraft2_Install_koKR = "expand 32-byte kQWK70000838FBM9Q0000WQDB2FTM0000MWAZ3V9E0000U6MA";   // 3V9E2FTMBM9QQWK7U6MAMWAZWQDB838F
 
 static const char * MpqKeyArray[] =
 {
     MpqeKey_Starcraft2_Install_enUS,
     MpqeKey_Starcraft2_Install_enGB,
+    MpqeKey_Starcraft2_Install_enSG,
     MpqeKey_Starcraft2_Install_deDE,
     MpqeKey_Starcraft2_Install_esES,
+    MpqeKey_Starcraft2_Install_esMX,
     MpqeKey_Starcraft2_Install_frFR,
     MpqeKey_Starcraft2_Install_itIT,
     MpqeKey_Starcraft2_Install_plPL,
     MpqeKey_Starcraft2_Install_ruRU,
+    MpqeKey_Starcraft2_Install_zhTW,
+    MpqeKey_Starcraft2_Install_ptBR,
+    MpqeKey_Starcraft2_Install_koKR,
     NULL
 };
 
@@ -1366,18 +1375,19 @@ TFileStream * FileStream_OpenEncrypted(const TCHAR * szFileName)
             pEncryptedStream->StreamFlags  |= (STREAM_FLAG_READ_ONLY | STREAM_FLAG_ENCRYPTED_FILE);
 
             // Get the file key
-            if(!DetectFileKey(pEncryptedStream))
-            {
-                SetLastError(ERROR_UNKNOWN_FILE_KEY);
-                STORM_FREE(pEncryptedStream);
-                pEncryptedStream = NULL;
-            }
+            if(DetectFileKey(pEncryptedStream))
+                return pEncryptedStream;
+
+            // Close the encrypted stream
+            STORM_FREE(pEncryptedStream);
+            pEncryptedStream = NULL;
         }
 
-        STORM_FREE(pStream);
-        return pEncryptedStream;
+        FileStream_Close(pStream);
+        pStream = NULL;
     }
 
+    SetLastError(ERROR_UNKNOWN_FILE_KEY);
     return NULL;
 }
 

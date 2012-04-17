@@ -15,7 +15,8 @@
 //-----------------------------------------------------------------------------
 // Local defines
 
-#define MAX_FLAG_INDEX  256
+#define INVALID_FLAG_VALUE 0xCCCCCCCC
+#define MAX_FLAG_INDEX     512
 
 //-----------------------------------------------------------------------------
 // Local structures
@@ -62,6 +63,29 @@ typedef struct _BET_TABLE_HEADER
 //-----------------------------------------------------------------------------
 // Support for calculating bit sizes
 
+static void InitFileFlagArray(LPDWORD FlagArray)
+{
+    for(DWORD dwFlagIndex = 0; dwFlagIndex < MAX_FLAG_INDEX; dwFlagIndex++)
+        FlagArray[dwFlagIndex] = INVALID_FLAG_VALUE;
+}
+
+static DWORD GetFileFlagIndex(LPDWORD FlagArray, DWORD dwFlags)
+{
+    // Find free or equal entry in the flag array
+    for(DWORD dwFlagIndex = 0; dwFlagIndex < MAX_FLAG_INDEX; dwFlagIndex++)
+    {
+        if(FlagArray[dwFlagIndex] == INVALID_FLAG_VALUE || FlagArray[dwFlagIndex] == dwFlags)
+        {
+            FlagArray[dwFlagIndex] = dwFlags;
+            return dwFlagIndex;
+        }
+    }
+
+    // This should never happen
+    assert(false);
+    return 0xFFFFFFFF;
+}
+
 static DWORD GetNecessaryBitCount(ULONGLONG MaxValue)
 {
     DWORD dwBitCount = 0;
@@ -73,69 +97,6 @@ static DWORD GetNecessaryBitCount(ULONGLONG MaxValue)
     }
     
     return dwBitCount;
-}
-
-static BYTE GetFlagsComboIndex(DWORD dwFlags)
-{
-    BYTE FlagComboIndex = 0;
-
-    //
-    // We only use 8 different bits. This allows us to
-    // construct 256 unique values for every possible combination of MPQ file flags.
-    //
-
-    if(dwFlags & MPQ_FILE_IMPLODE)
-        FlagComboIndex |= 0x01;
-    dwFlags &= ~MPQ_FILE_IMPLODE;
-
-    if(dwFlags & MPQ_FILE_COMPRESS)
-        FlagComboIndex |= 0x02;
-    dwFlags &= ~MPQ_FILE_COMPRESS;
-
-    if(dwFlags & MPQ_FILE_ENCRYPTED)
-        FlagComboIndex |= 0x04;
-    dwFlags &= ~MPQ_FILE_ENCRYPTED;
-
-    if(dwFlags & MPQ_FILE_FIX_KEY)
-        FlagComboIndex |= 0x08;
-    dwFlags &= ~MPQ_FILE_FIX_KEY;
-
-    if(dwFlags & MPQ_FILE_PATCH_FILE)
-        FlagComboIndex |= 0x10;
-    dwFlags &= ~MPQ_FILE_PATCH_FILE;
-
-    if(dwFlags & MPQ_FILE_SINGLE_UNIT)
-        FlagComboIndex |= 0x20;
-    dwFlags &= ~MPQ_FILE_SINGLE_UNIT;
-
-    if(dwFlags & MPQ_FILE_DELETE_MARKER)
-        FlagComboIndex |= 0x40;
-    dwFlags &= ~MPQ_FILE_DELETE_MARKER;
-
-    if(dwFlags & MPQ_FILE_SECTOR_CRC)
-        FlagComboIndex |= 0x80;
-    dwFlags &= ~MPQ_FILE_SECTOR_CRC;
-
-    // Sanity check - the flags must now be zero
-    assert((dwFlags & 0x7FFFFFFF) == 0);
-    return FlagComboIndex;
-}
-
-static DWORD GetFileFlagIndex(LPDWORD FlagArray, DWORD dwFlags)
-{
-    // Find free or equal entry in the flag array
-    for(DWORD dwFlagIndex = 0; dwFlagIndex < MAX_FLAG_INDEX; dwFlagIndex++)
-    {
-        if(FlagArray[dwFlagIndex] == 0 || FlagArray[dwFlagIndex] == dwFlags)
-        {
-            FlagArray[dwFlagIndex] = dwFlags;
-            return dwFlagIndex;
-        }
-    }
-
-    // This should never happen
-    assert(false);
-    return 0xFFFFFFFF;
 }
 
 //-----------------------------------------------------------------------------
@@ -420,8 +381,7 @@ static TMPQBlock * TranslateBlockTable(
         BlockTableSize = sizeof(TMPQBlock) * ha->dwFileTableSize;
         for(DWORD i = 0; i < ha->dwFileTableSize; i++)
         {
-            if(pFileEntry->ByteOffset >> 32)
-                bNeedHiBlockTable = true;
+            bNeedHiBlockTable = (pFileEntry->ByteOffset >> 32) ? true : false;
             pBlock->dwFilePos = (DWORD)pFileEntry->ByteOffset;
             pBlock->dwFSize   = pFileEntry->dwFileSize;
             pBlock->dwCSize   = pFileEntry->dwCmpSize;
@@ -1018,26 +978,18 @@ static void CreateBetHeader(
     TFileEntry * pFileTableEnd = ha->pFileTable + ha->dwFileTableSize;
     TFileEntry * pFileEntry;
     ULONGLONG MaxByteOffset = 0;
+    DWORD FlagArray[MAX_FLAG_INDEX];
+    DWORD dwMaxFlagIndex = 0;
     DWORD dwMaxFileSize = 0;
     DWORD dwMaxCmpSize = 0;
-    DWORD dwFlagCount = 0;
-    BYTE FlagComboArray[MAX_FLAG_INDEX];
-    BYTE FlagComboIndex;
+    DWORD dwFlagIndex;
 
     // Initialize array of flag combinations
-    memset(FlagComboArray, 0, sizeof(FlagComboArray));
+    InitFileFlagArray(FlagArray);
 
     // Get the maximum values for the BET table
     for(pFileEntry = ha->pFileTable; pFileEntry < pFileTableEnd; pFileEntry++)
     {
-        // We don't allow the file table to have free entries in the middle
-        // This must be a bug in the library somewhere.
-        if((pFileEntry->dwFlags & MPQ_FILE_EXISTS) == 0)
-        {
-            pFileEntry->dwFlags = MPQ_FILE_EXISTS | MPQ_FILE_DELETE_MARKER;
-            assert(false);
-        }
-
         // Highest file position in the MPQ
         if(pFileEntry->ByteOffset > MaxByteOffset)
             MaxByteOffset = pFileEntry->ByteOffset;
@@ -1051,10 +1003,9 @@ static void CreateBetHeader(
             dwMaxCmpSize = pFileEntry->dwCmpSize;
 
         // Check if this flag was there before
-        FlagComboIndex = GetFlagsComboIndex(pFileEntry->dwFlags);
-        if(FlagComboArray[FlagComboIndex] == 0)
-            dwFlagCount++;
-        FlagComboArray[FlagComboIndex] = 1;
+        dwFlagIndex = GetFileFlagIndex(FlagArray, pFileEntry->dwFlags);
+        if(dwFlagIndex > dwMaxFlagIndex)
+            dwMaxFlagIndex = dwFlagIndex;
     }
 
     // Now save bit count for every piece of file information
@@ -1068,7 +1019,7 @@ static void CreateBetHeader(
     pBetHeader->dwBitCount_CmpSize   = GetNecessaryBitCount(dwMaxCmpSize);
 
     pBetHeader->dwBitIndex_FlagIndex = pBetHeader->dwBitIndex_CmpSize + pBetHeader->dwBitCount_CmpSize;
-    pBetHeader->dwBitCount_FlagIndex = GetNecessaryBitCount(dwFlagCount);
+    pBetHeader->dwBitCount_FlagIndex = GetNecessaryBitCount(dwMaxFlagIndex + 1);
 
     pBetHeader->dwBitIndex_Unknown   = pBetHeader->dwBitIndex_FlagIndex + pBetHeader->dwBitCount_FlagIndex;
     pBetHeader->dwBitCount_Unknown   = 0;
@@ -1082,7 +1033,7 @@ static void CreateBetHeader(
 
     // Save the file count and flag count
     pBetHeader->dwFileCount          = ha->dwFileTableSize;
-    pBetHeader->dwFlagCount          = dwFlagCount;
+    pBetHeader->dwFlagCount          = dwMaxFlagIndex + 1;
     pBetHeader->dwUnknown08          = 0x10;
 
     // Save the total size of the BET hash
@@ -1224,8 +1175,8 @@ TMPQExtTable * TranslateBetTable(
     DWORD i;
 
     // Calculate the bit sizes of various entries
+    InitFileFlagArray(FlagArray);
     CreateBetHeader(ha, &BetHeader);
-    memset(FlagArray, 0, sizeof(FlagArray));
 
     // Calculate the size of the BET table
     BetTableSize = sizeof(BET_TABLE_HEADER) +
@@ -1260,30 +1211,32 @@ TMPQExtTable * TranslateBetTable(
             // Construct the array of flag values and bit-based file table
             for(i = 0; i < BetHeader.dwFileCount; i++, pFileEntry++)
             {
-                // Only count files that exist
-                if(pFileEntry->dwFlags & MPQ_FILE_EXISTS)
-                {
-                    // Save the byte offset
-                    pBitArray->SetBits(nBitOffset + BetHeader.dwBitIndex_FilePos,
-                                       BetHeader.dwBitCount_FilePos,
-                                      &pFileEntry->ByteOffset,
-                                       8);
-                    pBitArray->SetBits(nBitOffset + BetHeader.dwBitIndex_FileSize,
-                                       BetHeader.dwBitCount_FileSize,
-                                      &pFileEntry->dwFileSize,
-                                       4);
-                    pBitArray->SetBits(nBitOffset + BetHeader.dwBitIndex_CmpSize,
-                                       BetHeader.dwBitCount_CmpSize,
-                                      &pFileEntry->dwCmpSize,
-                                       4);
+                //
+                // Note: Blizzard MPQs contain valid values even for non-existant files
+                // (FilePos, FileSize, CmpSize and FlagIndex)
+                // Note: If flags is zero, it must be in the flag table too !!!
+                //
+                
+                // Save the byte offset
+                pBitArray->SetBits(nBitOffset + BetHeader.dwBitIndex_FilePos,
+                                   BetHeader.dwBitCount_FilePos,
+                                  &pFileEntry->ByteOffset,
+                                   8);
+                pBitArray->SetBits(nBitOffset + BetHeader.dwBitIndex_FileSize,
+                                   BetHeader.dwBitCount_FileSize,
+                                  &pFileEntry->dwFileSize,
+                                   4);
+                pBitArray->SetBits(nBitOffset + BetHeader.dwBitIndex_CmpSize,
+                                   BetHeader.dwBitCount_CmpSize,
+                                  &pFileEntry->dwCmpSize,
+                                   4);
 
-                    // Get the flag array for the file
-                    dwFlagIndex = GetFileFlagIndex(FlagArray, pFileEntry->dwFlags);
-                    pBitArray->SetBits(nBitOffset + BetHeader.dwBitIndex_FlagIndex,
-                                       BetHeader.dwBitCount_FlagIndex,
-                                      &dwFlagIndex,
-                                       4);
-                }
+                // Save the flag index
+                dwFlagIndex = GetFileFlagIndex(FlagArray, pFileEntry->dwFlags);
+                pBitArray->SetBits(nBitOffset + BetHeader.dwBitIndex_FlagIndex,
+                                   BetHeader.dwBitCount_FlagIndex,
+                                  &dwFlagIndex,
+                                   4);
 
                 // Move the bit offset
                 nBitOffset += BetHeader.dwTableEntrySize;
@@ -1702,9 +1655,11 @@ void ClearFileEntry(
                                         4);
     }
 
-    // Free the file name, and zero the entire entry
+    // Free the file name, and set the file entry as deleted
     if(pFileEntry->szFileName != NULL)
         STORM_FREE(pFileEntry->szFileName);
+
+    // Invalidate the file entry
     memset(pFileEntry, 0, sizeof(TFileEntry));
 }
 
@@ -1718,7 +1673,7 @@ int FreeFileEntry(
 
     //
     // If we have HET table, we cannot just get rid of the file
-    // Doing so would lead to empty gaps in the HET and BET tables
+    // Doing so would lead to empty gaps in the HET table
     // We have to keep BET hash, hash index, HET index, locale, platform and file name
     //
 
@@ -1750,14 +1705,10 @@ int FreeFileEntry(
     }
     else
     {
-        memset(pFileEntry->md5, 0, MD5_DIGEST_SIZE);
-        pFileEntry->ByteOffset = 0;
-        pFileEntry->FileTime   = 0;
-        pFileEntry->dwFileSize = 0;
-        pFileEntry->dwCmpSize  = 0;
-        pFileEntry->dwFlags    = MPQ_FILE_EXISTS | MPQ_FILE_DELETE_MARKER;
-        pFileEntry->dwCrc32    = 0;
-        nError = ERROR_MARKED_FOR_DELETE;
+        // Note: Deleted entries in Blizzard MPQs version 4.0
+        // normally contain valid byte offset and length
+        pFileEntry->dwFlags &= ~MPQ_FILE_EXISTS;
+        nError = ERROR_SUCCESS;
     }
 
     return nError;
@@ -2044,49 +1995,62 @@ int BuildFileTable_Classic(
                 // Defense against MPQs that claim block table to be bigger than it really is
                 FixBlockTableSize(ha, pBlockTable, pHeader->dwBlockTableSize);
 
-                // Merge the block table to the file table
-                for(pHash = ha->pHashTable; pHash < pHashEnd; pHash++)
+                // If we don't have HET table, we build the file entries from the hash&block tables
+                if(ha->pHetTable == NULL)
                 {
-                    if(pHash->dwBlockIndex < pHeader->dwBlockTableSize)
+                    for(pHash = ha->pHashTable; pHash < pHashEnd; pHash++)
                     {
-                        pBlock = pBlockTable + pHash->dwBlockIndex;
-
-                        //
-                        // Yet another silly map protector: For each valid file,
-                        // there are 4 items in the hash table, that appears to be valid:
-                        //
-                        //   a6d79af0 e61a0932 001e0000 0000770b <== Fake valid
-                        //   a6d79af0 e61a0932 0000d761 0000dacb <== Fake valid
-                        //   a6d79af0 e61a0932 00000000 0000002f <== Real file entry
-                        //   a6d79af0 e61a0932 00005a4f 000093bc <== Fake valid
-                        // 
-
-                        if(!(pBlock->dwFlags & ~MPQ_FILE_VALID_FLAGS) && (pBlock->dwFlags & MPQ_FILE_EXISTS))
+                        if(pHash->dwBlockIndex < pHeader->dwBlockTableSize)
                         {
-                            // Get the entry
                             pFileEntry = pFileTable + pHash->dwBlockIndex;
+                            pBlock = pBlockTable + pHash->dwBlockIndex;
 
-                            // Fill the entry
-                            pFileEntry->ByteOffset  = pBlock->dwFilePos;
-                            pFileEntry->dwHashIndex = (DWORD)(pHash - ha->pHashTable);
-                            pFileEntry->dwFileSize  = pBlock->dwFSize;
-                            pFileEntry->dwCmpSize   = pBlock->dwCSize;
-                            pFileEntry->dwFlags     = pBlock->dwFlags;
-                            pFileEntry->lcLocale    = pHash->lcLocale;
-                            pFileEntry->wPlatform   = pHash->wPlatform;
-                        }
-                        else
-                        {
-                            // If the hash table entry doesn't point to the valid file item,
-                            // we invalidate the entire hash table entry
-                            // Don't do that if we have BET table
-                            if(ha->pHetTable == NULL)
+                            //
+                            // Yet another silly map protector: For each valid file,
+                            // there are 4 items in the hash table, that appears to be valid:
+                            //
+                            //   a6d79af0 e61a0932 001e0000 0000770b <== Fake valid
+                            //   a6d79af0 e61a0932 0000d761 0000dacb <== Fake valid
+                            //   a6d79af0 e61a0932 00000000 0000002f <== Real file entry
+                            //   a6d79af0 e61a0932 00005a4f 000093bc <== Fake valid
+                            // 
+
+                            if(!(pBlock->dwFlags & ~MPQ_FILE_VALID_FLAGS) && (pBlock->dwFlags & MPQ_FILE_EXISTS))
                             {
+                                // Fill the entry
+                                pFileEntry->ByteOffset  = pBlock->dwFilePos;
+                                pFileEntry->dwHashIndex = (DWORD)(pHash - ha->pHashTable);
+                                pFileEntry->dwFileSize  = pBlock->dwFSize;
+                                pFileEntry->dwCmpSize   = pBlock->dwCSize;
+                                pFileEntry->dwFlags     = pBlock->dwFlags;
+                                pFileEntry->lcLocale    = pHash->lcLocale;
+                                pFileEntry->wPlatform   = pHash->wPlatform;
+                            }
+                            else
+                            {
+                                // If the hash table entry doesn't point to the valid file item,
+                                // we invalidate the entire hash table entry
                                 pHash->dwName1      = 0xFFFFFFFF;
                                 pHash->dwName2      = 0xFFFFFFFF;
                                 pHash->lcLocale     = 0xFFFF;
                                 pHash->wPlatform    = 0xFFFF;
                                 pHash->dwBlockIndex = HASH_ENTRY_DELETED;
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    for(pHash = ha->pHashTable; pHash < pHashEnd; pHash++)
+                    {
+                        if(pHash->dwBlockIndex < ha->dwFileTableSize)
+                        {
+                            pFileEntry = pFileTable + pHash->dwBlockIndex;
+                            if(pFileEntry->dwFlags & MPQ_FILE_EXISTS)
+                            {
+                                pFileEntry->dwHashIndex = (DWORD)(pHash - ha->pHashTable);
+                                pFileEntry->lcLocale    = pHash->lcLocale;
+                                pFileEntry->wPlatform   = pHash->wPlatform;
                             }
                         }
                     }

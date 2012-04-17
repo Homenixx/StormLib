@@ -8,7 +8,6 @@
 /* 25.03.03  1.00  Lad  The first version of StormLibTest.cpp                */
 /*****************************************************************************/
 
-#define _CRT_NON_CONFORMING_SWPRINTFS
 #define _CRT_SECURE_NO_DEPRECATE
 #define __INCLUDE_CRYPTOGRAPHY__
 #define __STORMLIB_SELF__                   // Don't use StormLib.lib
@@ -714,7 +713,7 @@ __TryAgain:
 
 static int TestArchiveOpenAndClose(const TCHAR * szMpqName)
 {
-    const char * szFileName1 = "(attributes)";
+    const char * szFileName1 = "world\\maps\\AhnQiraj\\AhnQiraj_27_51_tex1.adt";
 //  const char * szFileName2 = "items\\map\\mapz_deleted.cel";
     TMPQArchive * ha = NULL;
     HANDLE hFile1 = NULL;
@@ -725,7 +724,7 @@ static int TestArchiveOpenAndClose(const TCHAR * szMpqName)
     if(nError == ERROR_SUCCESS)
     {
         _tprintf(_T("Opening archive %s ...\n"), szMpqName);
-        if(!SFileOpenArchive(szMpqName, 0, 0, /* MPQ_OPEN_ENCRYPTED,*/ &hMpq))
+        if(!SFileOpenArchive(szMpqName, 0, MPQ_OPEN_ENCRYPTED, &hMpq))
             nError = GetLastError();
         ha = (TMPQArchive *)hMpq;
     }
@@ -764,28 +763,22 @@ static int TestArchiveOpenAndClose(const TCHAR * szMpqName)
         SFileVerifyRawData(hMpq, SFILE_VERIFY_FILE, szFileName1);
 
         // Try to open a file
-        if(SFileOpenFileEx(hMpq, szFileName1, SFILE_OPEN_FROM_MPQ, &hFile1))
-        {
-            DWORD dwBytesRead = 0;
-            BYTE Buffer[0x10000];
-
-            SFileGetFileSize(hFile1, NULL);
-            SFileReadFile(hFile1, Buffer, sizeof(Buffer), &dwBytesRead);
-            SFileSetFilePointer(hFile1, 0, NULL, FILE_CURRENT);
-
-            SFileSetFilePointer(hFile1, 0x5D000, NULL, FILE_BEGIN);
-            SFileReadFile(hFile1, Buffer, 0xFFFFFFFF, &dwBytesRead);
-            GetLastError();
-
-
-        }
-        else
+        if(!SFileOpenFileEx(hMpq, szFileName1, SFILE_OPEN_FROM_MPQ, &hFile1))
         {
             nError = GetLastError();
             printf("%s - file not found in the MPQ\n", szFileName1);
         }
     }
 
+    // Dummy read from the file
+    if(nError == ERROR_SUCCESS)
+	{
+        DWORD dwBytesRead = 0;
+        BYTE Buffer[0x1000];
+
+        SFileSetFileLocale(hFile1, 0x405);
+        SFileReadFile(hFile1, Buffer, sizeof(Buffer), &dwBytesRead);
+	}
 /*
     // Verify the MPQ listfile
     if(nError == ERROR_SUCCESS)
@@ -1557,9 +1550,7 @@ static int TestOpenPatchedArchive(const TCHAR * szMpqName, ...)
     HANDLE hFile = NULL;
     HANDLE hMpq = NULL;
     va_list argList;
-    const char * szFileName = "Sound\\CinematicVoices\\MaelstromNarration.mp3";
-//  const char * szExtension;
-//  const char * szLocale;
+    const char * szFileName = "World\\Minimaps\\Azeroth\\noLiquid_map20_44.blp";
     TCHAR szLocFileName[MAX_PATH];
     LPBYTE pbFullFile = NULL;
     DWORD dwFileSize;
@@ -1588,7 +1579,7 @@ static int TestOpenPatchedArchive(const TCHAR * szMpqName, ...)
         }
         va_end(argList);
     }
-/*
+
     // Now search all files
     if(nError == ERROR_SUCCESS)
     {
@@ -1596,7 +1587,7 @@ static int TestOpenPatchedArchive(const TCHAR * szMpqName, ...)
         HANDLE hFind;
         bool bResult = true;
 
-        hFind = SFileFindFirstFile(hMpq, "*", &sf, NULL);
+        hFind = SFileFindFirstFile(hMpq, "World\\Minimaps\\Azeroth\\noLiquid_map20_44.*", &sf, NULL);
         while(hFind && bResult)
         {
             printf("%s\n", sf.cFileName);
@@ -1607,9 +1598,9 @@ static int TestOpenPatchedArchive(const TCHAR * szMpqName, ...)
     // Now try to open patched version of a file
     if(nError == ERROR_SUCCESS)
     {
-        SFileExtractFile(hMpq, szFileName, "E:\\Spell.dbc");
+        SFileExtractFile(hMpq, szFileName, _T("E:\\noLiquid_map20_44.blp"));
     }
-*/
+
     // Now try to open patched version of "Achievement.dbc"
     if(nError == ERROR_SUCCESS)
     {
@@ -1627,7 +1618,7 @@ static int TestOpenPatchedArchive(const TCHAR * szMpqName, ...)
     {
         TCHAR * szPatchChain = NULL;
         DWORD cbPatchChain = 0;
-
+        
         // Get the patch chain
         SFileGetFileInfo(hFile, SFILE_INFO_PATCH_CHAIN, szPatchChain, cbPatchChain, &cbPatchChain);
         szPatchChain = (TCHAR *)(new BYTE[cbPatchChain]);
@@ -1638,6 +1629,12 @@ static int TestOpenPatchedArchive(const TCHAR * szMpqName, ...)
         dwFileSize = SFileGetFileSize(hFile, NULL);
         if(dwFileSize != 0)
         {
+            DWORD dwBytesRead = 0;
+            BYTE TempData[0x100];
+
+            SFileReadFile(hFile, TempData, sizeof(TempData), &dwBytesRead);
+            SFileSetFilePointer(hFile, 0, NULL, FILE_BEGIN);
+
             // Allocate space for the full file
             pbFullFile = new BYTE[dwFileSize];
             if(pbFullFile != NULL)
@@ -1672,101 +1669,9 @@ static int TestOpenPatchedArchive(const TCHAR * szMpqName, ...)
     return nError;
 }
 
-#ifdef WIN32
-static int CreateStatisticsForMpq(FILE * fp, LPCTSTR szFileName)
-{
-    TMPQFile * hf;
-    DWORD * SectorOffsets;
-    DWORD dwExpectedSize;
-    HANDLE hMpq;
-    HANDLE hFile;
-    DWORD dwBytesRead = 0;
-    BYTE Buffer[0x08];
-
-    _tprintf(_T("%s ...\n"), szFileName);
-
-    if(SFileOpenArchive(szFileName, 0, 0, &hMpq))
-    {
-        if(SFileOpenFileEx(hMpq, ATTRIBUTES_NAME, 0, &hFile))
-        {
-            SFileReadFile(hFile, Buffer, sizeof(Buffer), &dwBytesRead, NULL);
-
-            // Get the pointer to internal structures
-            hf = (TMPQFile *)hFile;
-            SectorOffsets = (DWORD *)hf->SectorOffsets;
-            if(SectorOffsets != NULL)
-            {
-                dwExpectedSize = (hf->dwSectorCount + 1) * sizeof(DWORD);
-                if(SectorOffsets[0] > dwExpectedSize + 4)
-                {
-                    fprintf(fp, "%-80ws\t0x%08X\t0x%08X\t0x%02X\n", szFileName,
-                                                             hf->pFileEntry->dwFileSize,
-                                                             hf->pFileEntry->dwCmpSize,
-                                                             ((SectorOffsets[0] - dwExpectedSize) / 4) - 1);
-                }
-            }
-
-            SFileCloseFile(hFile);
-        }
-
-        SFileCloseArchive(hMpq);
-    }
-    return 0;
-}
-
-
-static int TestCreateMpqStatistics(FILE * fp, LPCTSTR szSearchMask)
-{
-    WIN32_FIND_DATA wf;
-    LPTSTR szFilePart;
-    LPTSTR szTemp;
-    HANDLE hFind;
-    TCHAR szSearchMask2[MAX_PATH];
-    BOOL bFound = TRUE;
-
-    // Prepare buffer for sub search mask
-    _tcscpy(szSearchMask2, szSearchMask);
-    szFilePart = _tcschr(szSearchMask2, _T('*'));
-    if(szFilePart == NULL)
-        return 0;
-
-    hFind = FindFirstFile(szSearchMask, &wf);
-    if(hFind != INVALID_HANDLE_VALUE)
-    {
-        while(bFound)
-        {
-            if(wf.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
-            {
-                if(wf.cFileName[0] != _T('.'))
-                {
-                    _stprintf(szFilePart, _T("%s\\*"), wf.cFileName);
-                    TestCreateMpqStatistics(fp, szSearchMask2);
-                }
-            }
-            else
-            {
-                szTemp = _tcsrchr(wf.cFileName, _T('.'));
-                if(szTemp != NULL)
-                {
-                    if(!_tcsicmp(szTemp, _T(".mpq")))
-                    {
-                        _tcscpy(szFilePart, wf.cFileName);
-                        CreateStatisticsForMpq(fp, szSearchMask2);
-                    }
-                }
-            }
-
-            bFound = FindNextFile(hFind, &wf);
-        }
-
-        FindClose(hFind);
-    }
-    return 0;
-}
-#endif
-
 //-----------------------------------------------------------------------------
 // Main
+// 
 
 int main(void)
 {
@@ -1775,6 +1680,8 @@ int main(void)
 #if defined(_MSC_VER) && defined(_DEBUG)
     _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 #endif  // defined(_MSC_VER) && defined(_DEBUG)
+
+//  FileStream_OpenEncrypted(_T("e:\\Multimedia\\MPQs\\2010 - Starcraft II\\Installer UI 2 deDE.MPQE"));
 
     // Mix the random number generator
 //  srand(GetTickCount());
@@ -1797,10 +1704,10 @@ int main(void)
     // Test compression methods
 //  if(nError == ERROR_SUCCESS)
 //      nError = TestSectorCompress(MPQ_SECTOR_SIZE);
-                                                                                            
+
     // Test the archive open and close
     if(nError == ERROR_SUCCESS)
-        nError = TestArchiveOpenAndClose(MAKE_PATH("locale-enGB.MPQ"));
+        nError = TestArchiveOpenAndClose(_T("e:\\Ladik\\Incoming\\Diablo III\\Diablo-III-8370-enGB-Installer\\Installer Tome 1.MPQE"));
 //      nError = TestArchiveOpenAndClose(MAKE_PATH("2011 - WoW BETA/wow-update-13202.MPQ"));
 //      nError = TestArchiveOpenAndClose(MAKE_PATH("2002 - Warcraft III/ProtectedMap_HashTable_FakeValid.w3x"));
 //      nError = TestArchiveOpenAndClose(MAKE_PATH("2010 - Starcraft II/Installer Tome 1 enGB.MPQE"));
@@ -1865,9 +1772,13 @@ int main(void)
                                         0x1001);
     }
 */
-/*
+
     if(nError == ERROR_SUCCESS)
     {
+        nError = TestOpenPatchedArchive(MAKE_PATH("2004 - Wow 3.x/lichking.MPQ"),
+                                        MAKE_PATH("2011 - WoW 4.x/wow-update-13287.MPQ"),
+                                        NULL);
+/*
         nError = TestOpenPatchedArchive(MAKE_PATH("2011 - WoW 4.x/locale-enGB.MPQ"),
                                         MAKE_PATH("2011 - WoW 4.x/wow-update-13164.MPQ"),
                                         MAKE_PATH("2011 - WoW 4.x/wow-update-13205.MPQ"),
@@ -1880,21 +1791,9 @@ int main(void)
                                         MAKE_PATH("2011 - WoW 4.x/wow-update-enGB-14333.MPQ"),
                                         MAKE_PATH("2011 - WoW 4.x/wow-update-enGB-14480.MPQ"),
                                         NULL);
-    }
 */
-/*
-    if(nError == ERROR_SUCCESS)
-    {
-        FILE * fp = _tfopen(_T("E:\\MpqStats.txt"), _T("wt"));
+    }
 
-        if(fp != NULL)
-        {
-            TestCreateMpqStatistics(fp, _T("E:\\Hry\\*"));
-            TestCreateMpqStatistics(fp, _T("E:\\Multimedia\\MPQs\\*"));
-            fclose(fp);
-        }
-    }
-*/
     // Remove the working directory
     clreol();
     if(nError != ERROR_SUCCESS)

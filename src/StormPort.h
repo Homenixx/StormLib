@@ -9,7 +9,7 @@
 /* Computer: whiplash.flachland-chemnitz.de                                  */
 /* System: Linux 2.4.0 on i686                                               */
 /*                                                                           */
-/* Author: Sam Wilkins                                                       */
+/* Author: Sam Wilkins <swilkins1337@gmail.com>                              */
 /* System: Mac OS X and port to big endian processor                         */
 /*                                                                           */
 /*---------------------------------------------------------------------------*/
@@ -69,10 +69,6 @@
   #define    __SYS_ZLIB
   #define    __SYS_BZLIB
 
-  #ifndef __BIG_ENDIAN__
-    #define PLATFORM_LITTLE_ENDIAN          // Apple is now making Macs with Intel CPUs
-  #endif
-  
   #define PLATFORM_MAC
   #define PLATFORM_DEFINED                  // The platform is known now
 
@@ -152,10 +148,6 @@
 
   #define _stricmp  strcasecmp
   #define _strnicmp strncasecmp
-
-  void  SetLastError(int err);
-  int   GetLastError();
-
 
 #endif // !WIN32
 

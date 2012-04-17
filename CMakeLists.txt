@@ -290,6 +290,6 @@ if(WIN32)
     set_target_properties(storm PROPERTIES OUTPUT_NAME StormLib)
 endif()
 
-install(TARGETS storm RUNTIME DESTINATION bin LIBRARY DESTINATION lib ARCHIVE DESTINATION lib)
+install(TARGETS storm RUNTIME DESTINATION bin LIBRARY DESTINATION lib ARCHIVE DESTINATION lib FRAMEWORK DESTINATION /Library/Frameworks)
 install(FILES src/StormLib.h src/StormPort.h DESTINATION include)
 

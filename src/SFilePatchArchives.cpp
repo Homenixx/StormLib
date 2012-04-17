@@ -26,74 +26,34 @@ typedef struct _BLIZZARD_BSDIFF40_FILE
 //-----------------------------------------------------------------------------
 // Local functions
 
-static bool CompareNameMask(const TCHAR * szMpqName, const TCHAR * szNameMask)
-{
-    for(;;)
-    {
-        // Compare character
-        switch(*szNameMask)
-        {
-            case 0:         // End of the mask
-                return (*szMpqName == 0) ? true : false;
-
-            case _T('#'):   // We are expecting a number
-                while('0' <= *szMpqName && *szMpqName <= '9')
-                    szMpqName++;
-                szNameMask++;
-                break;
-
-            default:
-                if(toupper(*szMpqName++) != toupper(*szNameMask++))
-                    return false;
-                break;
-        }
-    }
-}
-
 static bool GetDefaultPatchPrefix(
     const TCHAR * szBaseMpqName,
-    const TCHAR * szPatchMpqName,
     char * szBuffer)
 {
     const TCHAR * szExtension;
     const TCHAR * szDash;
 
     // Ensure that both names are plain names
-    szPatchMpqName = GetPlainFileNameT(szPatchMpqName);
     szBaseMpqName = GetPlainFileNameT(szBaseMpqName);
 
-    // For files like "wow-update-13164.MPQ", the patch prefix
-    // is based on the base MPQ name
-    if(CompareNameMask(szPatchMpqName, _T("wow-update-#.mpq")))
+    // Patch prefix is for the Cataclysm MPQs, whose names
+    // are like "locale-enGB.MPQ" or "speech-enGB.MPQ"
+    szExtension = _tcsrchr(szBaseMpqName, _T('.'));
+    szDash = _tcsrchr(szBaseMpqName, _T('-'));
+    strcpy(szBuffer, "Base");
+
+    // If the length of the prefix doesn't match, use default one
+    if(szExtension != NULL && szDash != NULL && (szExtension - szDash) == 5)
     {
-        // Patch prefix is for the Cataclysm MPQs, whose names
-        // are like "locale-enGB.MPQ" or "speech-enGB.MPQ"
-        szExtension = _tcsrchr(szBaseMpqName, _T('.'));
-        szDash = _tcsrchr(szBaseMpqName, _T('-'));
-        strcpy(szBuffer, "Base");
-
-        // If the length of the prefix doesn't match, use default one
-        if(szExtension != NULL && szDash != NULL && (szExtension - szDash) == 5)
-        {
-            // Copy the prefix
-            szBuffer[0] = (char)szDash[1];
-            szBuffer[1] = (char)szDash[2];
-            szBuffer[2] = (char)szDash[3];
-            szBuffer[3] = (char)szDash[4];
-            szBuffer[4] = 0;
-        }
-
-        return true;
+        // Copy the prefix
+        szBuffer[0] = (char)szDash[1];
+        szBuffer[1] = (char)szDash[2];
+        szBuffer[2] = (char)szDash[3];
+        szBuffer[3] = (char)szDash[4];
+        szBuffer[4] = 0;
     }
 
-    //
-    // Note: Diablo 3 MPQs have name of "d3-update-####.mpq,
-    // but they don't use patch prefixes
-    //
-
-    // No patch prefix
-    *szBuffer = 0;
-    return false;
+    return true;
 }
 
 static void Decompress_RLE(LPBYTE pbDecompressed, DWORD cbDecompressed, LPBYTE pbCompressed, DWORD cbCompressed)
@@ -526,7 +486,6 @@ bool WINAPI SFileOpenPatchArchive(
     TMPQArchive * haPatch;
     TMPQArchive * ha = (TMPQArchive *)hMpq;
     HANDLE hPatchMpq = NULL;
-    size_t nLength = 0;
     char szPatchPrefixBuff[MPQ_PATCH_PREFIX_LEN];
     int nError = ERROR_SUCCESS;
 
@@ -540,17 +499,12 @@ bool WINAPI SFileOpenPatchArchive(
         nError = ERROR_INVALID_PARAMETER;
 
     // If the user didn't give the patch prefix, get default one
-    if(szPatchPathPrefix == NULL)
+    if(szPatchPathPrefix != NULL)
     {
-        // Get the default patch prefix from the base MPQ
-        GetDefaultPatchPrefix(ha->pStream->szFileName, szPatchMpqName, szPatchPrefixBuff);
-        szPatchPathPrefix = szPatchPrefixBuff;
+        // Save length of the patch prefix
+        if(strlen(szPatchPathPrefix) > MPQ_PATCH_PREFIX_LEN - 2)
+            nError = ERROR_INVALID_PARAMETER;
     }
-
-    // Save length of the patch prefix
-    nLength = strlen(szPatchPathPrefix);
-    if(nLength > MPQ_PATCH_PREFIX_LEN - 2)
-        nError = ERROR_INVALID_PARAMETER;
 
     //
     // We don't allow adding patches to archives that have been open for write
@@ -577,17 +531,26 @@ bool WINAPI SFileOpenPatchArchive(
             return false;
         haPatch = (TMPQArchive *)hPatchMpq;
 
+        // Older WoW patches (build 13914) used to have
+        // several language versions in one patch file
+        // Those patches needed to have a path prefix
+        // We can distinguish such patches by not having the (patch_metadata) file
+        if(szPatchPathPrefix == NULL)
+        {
+            if(!SFileHasFile(hPatchMpq, PATCH_METADATA_NAME))
+            {
+                GetDefaultPatchPrefix(ha->pStream->szFileName, szPatchPrefixBuff);
+                szPatchPathPrefix = szPatchPrefixBuff;
+            }
+        }
+
         // Save the prefix for patch file names.
         // Make sure that there is backslash after it
-        if(nLength > 0)
+        if(szPatchPathPrefix != NULL && *szPatchPathPrefix != 0)
         {
             strcpy(haPatch->szPatchPrefix, szPatchPathPrefix);
-            if(haPatch->szPatchPrefix[nLength - 1] != '\\')
-            {
-                haPatch->szPatchPrefix[nLength++] = '\\';
-                haPatch->szPatchPrefix[nLength] = 0;
-            }
-            haPatch->cchPatchPrefix = nLength;
+            strcat(haPatch->szPatchPrefix, "\\");
+            haPatch->cchPatchPrefix = strlen(haPatch->szPatchPrefix);
         }
 
         // Now add the patch archive to the list of patches to the original MPQ
