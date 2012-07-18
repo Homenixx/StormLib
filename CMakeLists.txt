@@ -247,6 +247,7 @@ if(WIN32)
         message(STATUS "Using mingw")
     endif()
     set(SRC_ADDITIONAL_FILES ${ZLIB_BZIP2_FILES} ${TOMCRYPT_FILES} ${TOMMATH_FILES})
+    set(LINK_LIBS wininet)
 endif()
 
 if(APPLE)
