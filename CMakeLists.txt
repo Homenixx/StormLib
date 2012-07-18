@@ -272,8 +272,15 @@ target_link_libraries(storm ${LINK_LIBS})
 
 option(WITH_TEST "Compile Test application" OFF)
 if(WITH_TEST)
-     add_executable(storm_test ${TEST_SRC_FILES})
-     target_link_libraries(storm_test storm)
+    add_executable(storm_test ${TEST_SRC_FILES})
+    target_link_libraries(storm_test storm)
+endif()
+
+option(WITH_STATIC "Compile static linked library" OFF)
+if(WITH_STATIC)
+    add_library(StormLib_static STATIC ${SRC_FILES} ${SRC_ADDITIONAL_FILES})
+    target_link_libraries(StormLib_static ${LINK_LIBS})
+    set_target_properties(StormLib_static PROPERTIES OUTPUT_NAME StormLib)
 endif()
 
 if(APPLE)
