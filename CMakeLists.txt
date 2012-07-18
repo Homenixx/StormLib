@@ -27,6 +27,7 @@ set(SRC_FILES
            src/SFilePatchArchives.cpp
            src/SFileReadFile.cpp
            src/SFileVerify.cpp
+           src/libtomcrypt/src/pk/rsa/rsa_verify_simple.c
 )
 
 set(TOMCRYPT_FILES
@@ -90,7 +91,6 @@ set(TOMCRYPT_FILES
            src/libtomcrypt/src/pk/rsa/rsa_import.c
            src/libtomcrypt/src/pk/rsa/rsa_make_key.c
            src/libtomcrypt/src/pk/rsa/rsa_verify_hash.c
-           src/libtomcrypt/src/pk/rsa/rsa_verify_simple.c
 )
 
 set(TOMMATH_FILES
