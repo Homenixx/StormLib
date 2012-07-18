@@ -290,7 +290,8 @@ if(APPLE)
 endif()
 
 if(UNIX)
-    set_target_properties(storm PROPERTIES SOVERSION 0)
+    set_target_properties(StormLib PROPERTIES VERSION 8.10.0)
+    set_target_properties(StormLib PROPERTIES SOVERSION 8.10)
 endif()
 
 # On Win32, build StormLib.dll since we don't want to clash with Storm.dll

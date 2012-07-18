@@ -113,7 +113,7 @@ static int LoadMpqPatch_COPY(TMPQFile * hf, TPatchHeader * pPatchHeader)
         pbPatchFile += sizeof(TPatchHeader);
 
         // Load the rest of the patch
-        if(!SFileReadFile((HANDLE)hf, pbPatchFile, pPatchHeader->dwSizeOfPatchData - sizeof(TPatchHeader)))
+        if(!SFileReadFile((HANDLE)hf, pbPatchFile, pPatchHeader->dwSizeOfPatchData - sizeof(TPatchHeader), NULL, NULL))
             nError = GetLastError();
     }
 
@@ -139,7 +139,7 @@ static int LoadMpqPatch_BSD0(TMPQFile * hf, TPatchHeader * pPatchHeader)
     if(nError == ERROR_SUCCESS)
     {
         // Load the rest of the header
-        SFileReadFile((HANDLE)hf, pbCompressed, cbCompressed, &dwBytesRead);
+        SFileReadFile((HANDLE)hf, pbCompressed, cbCompressed, &dwBytesRead, NULL);
         if(dwBytesRead != cbCompressed)
             nError = ERROR_FILE_CORRUPT;
     }
@@ -315,7 +315,7 @@ static int LoadMpqPatch(TMPQFile * hf)
     int nError = ERROR_SUCCESS;
 
     // Read the patch header
-    SFileReadFile((HANDLE)hf, &PatchHeader, sizeof(TPatchHeader), &dwBytesRead);
+    SFileReadFile((HANDLE)hf, &PatchHeader, sizeof(TPatchHeader), &dwBytesRead, NULL);
     if(dwBytesRead != sizeof(TPatchHeader))
         nError = ERROR_FILE_CORRUPT;
 
@@ -400,7 +400,7 @@ static int ApplyMpqPatch(
 //-----------------------------------------------------------------------------
 // Public functions (StormLib internals)
 
-bool IsPatchData(const void * pvData, DWORD cbData, LPDWORD pdwPatchedFileSize)
+bool IsIncrementalPatchFile(const void * pvData, DWORD cbData, LPDWORD pdwPatchedFileSize)
 {
     TPatchHeader * pPatchHeader = (TPatchHeader *)pvData;
     BLIZZARD_BSDIFF40_FILE DiffFile;
@@ -520,7 +520,7 @@ bool WINAPI SFileOpenPatchArchive(
 
     if(nError == ERROR_SUCCESS)
     {
-        if((ha->pStream->StreamFlags & STREAM_FLAG_READ_ONLY) == 0)
+        if(!FileStream_IsReadOnly(ha->pStream))
             nError = ERROR_ACCESS_DENIED;
     }
 
@@ -539,7 +539,7 @@ bool WINAPI SFileOpenPatchArchive(
         {
             if(!SFileHasFile(hPatchMpq, PATCH_METADATA_NAME))
             {
-                GetDefaultPatchPrefix(ha->pStream->szFileName, szPatchPrefixBuff);
+                GetDefaultPatchPrefix(FileStream_GetFileName(ha->pStream), szPatchPrefixBuff);
                 szPatchPathPrefix = szPatchPrefixBuff;
             }
         }
